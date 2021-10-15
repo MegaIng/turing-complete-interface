@@ -1,0 +1,66 @@
+name: TC_DEMUX_3
+
+inputs: 1_a, 1_b, 1_c, deactivate
+outputs: 2_a, 2_b, 2_c, 2_d, 3_a, 3_b, 3_c, 3_d
+
+components: {
+    4: AND_4W1,
+    5: AND_4W1,
+    6: AND_4W1,
+    7: AND_4W1,
+    8: AND_4W1,
+    9: AND_4W1,
+    10: AND_4W1,
+    11: AND_4W1,
+    12: NOT_1W1,
+    13: NOT_1W1,
+    14: NOT_1W1,
+    not: NOT_1W1
+}
+
+wires: {
+    deactivate -> not.in,
+    not.out -> 4.d,
+    not.out -> 5.d,
+    not.out -> 6.d,
+    not.out -> 7.d,
+    not.out -> 8.d,
+    not.out -> 9.d,
+    not.out -> 10.d,
+    not.out -> 11.d,
+    1_a -> 5.c,
+    1_a -> 7.c,
+    1_a -> 9.c,
+    1_a -> 11.c,
+    1_a -> 12.in,
+    1_b -> 6.b,
+    1_b -> 7.b,
+    1_b -> 10.b,
+    1_b -> 11.b,
+    1_b -> 13.in,
+    1_c -> 8.a,
+    1_c -> 9.a,
+    1_c -> 10.a,
+    1_c -> 11.a,
+    1_c -> 14.in,
+    4.out -> 2_a,
+    5.out -> 2_b,
+    6.out -> 2_c,
+    7.out -> 2_d,
+    8.out -> 3_a,
+    9.out -> 3_b,
+    10.out -> 3_c,
+    11.out -> 3_d,
+    14.out -> 4.a,
+    14.out -> 5.a,
+    14.out -> 6.a,
+    14.out -> 7.a,
+    13.out -> 4.b,
+    13.out -> 5.b,
+    13.out -> 8.b,
+    13.out -> 9.b,
+    12.out -> 4.c,
+    12.out -> 6.c,
+    12.out -> 8.c,
+    12.out -> 10.c
+}

@@ -1,8 +1,8 @@
-name: NOT1
+name: NOT_1W1
 inputs: in
 outputs: out
 
-components: nand: NAND1
+components: nand: NAND_2W1
 
 wires: {
     in -> nand.a,
