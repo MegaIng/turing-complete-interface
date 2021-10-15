@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from graphlib import TopologicalSorter, CycleError
+from graphlib import TopologicalSorter
 from pathlib import Path
 
 import lark
@@ -8,7 +8,8 @@ from frozendict import frozendict
 from lark import Transformer, v_args
 from tree_ql import LarkQuery
 
-from logic_nodes import InputPin, OutputPin, NAND_2W1, Wire, CombinedLogicNode, LogicNodeType, SR_LATCH, builtins_gates
+from turing_complete_interface.logic_nodes import InputPin, OutputPin, Wire, CombinedLogicNode, LogicNodeType, \
+    builtins_gates
 
 
 class Builder(Transformer):
@@ -96,7 +97,7 @@ deps_query = LarkQuery('/components/component/*[1::2]')
 
 def get_name_of_component(path: Path) -> str:
     tree = parser.parse(path.read_text("utf-8"))
-    return name_query.execute(tree, multi=False)
+    return name_query.execute(tree)
 
 
 def load_all_components(base_path: Path) -> dict[str, LogicNodeType]:
@@ -104,10 +105,12 @@ def load_all_components(base_path: Path) -> dict[str, LogicNodeType]:
     sorter = TopologicalSorter()
     for spec in base_path.rglob("*.spec"):
         tree = parser.parse(spec.read_text("utf-8"))
-        name = name_query.execute(tree, multi=False)
+        name = name_query.execute(tree)
         parsed[name] = tree
 
-        deps = deps_query.execute(tree, multi=True)
+        deps = deps_query.execute(tree)
+        if deps is not None and not isinstance(deps, list):
+            deps = [deps]
         if deps:
             sorter.add(name, *filter(lambda n: n not in builtins_gates, deps))
         else:

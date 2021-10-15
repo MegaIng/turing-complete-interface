@@ -5,17 +5,17 @@ from pathlib import Path
 import tkinter as tk
 from pprint import pprint
 
-from lark import Lark, LarkError
+from lark import LarkError
 
-from logic_nodes import LogicNodeType
-from specification_parser import load_all_components, get_name_of_component
+from .logic_nodes import LogicNodeType
+from .specification_parser import load_all_components, get_name_of_component
 
 
 class BitsInput(tk.Frame):
-    def __init__(self, master, name: str, bit_size: int, locked=False):
+    def __init__(self, master, name: str, bit_size: int, locked=False, delayed: bool = False):
         super(BitsInput, self).__init__(master)
         self.bit_size = bit_size
-        self.label = tk.Label(self, text=f"{name}[{bit_size}]" if bit_size != 1 else name)
+        self.label = tk.Label(self, text=("?"[:delayed]) + (f"{name}[{bit_size}]" if bit_size != 1 else name))
         self.label.pack()
         self._value = 0
         self.bit_frame = None
@@ -29,7 +29,8 @@ class BitsInput(tk.Frame):
             self.bits = []
             for i in range(bit_size):
                 self.bits.append(tk.IntVar())
-                c = tk.Checkbutton(self.bit_frame, variable=self.bits[-1], command=self.bits_update, state=(tk.DISABLED if locked else tk.NORMAL))
+                c = tk.Checkbutton(self.bit_frame, variable=self.bits[-1], command=self.bits_update,
+                                   state=(tk.DISABLED if locked else tk.NORMAL))
                 y = i // 8
                 x = 8 - i % 8
                 c.grid(row=y, column=x)
@@ -91,7 +92,7 @@ def main(cmdline):
     parser = argparse.ArgumentParser()
     parser.add_argument("main_gate", action="store")
     ns = parser.parse_args(cmdline)
-    components = load_all_components(Path("components"))
+    components = load_all_components((Path(__file__).parent / "components"))
     if ns.main_gate.endswith(".spec"):
         try:
             ns.main_gate = get_name_of_component(Path(ns.main_gate))

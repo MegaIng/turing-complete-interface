@@ -1,18 +1,21 @@
 from collections import defaultdict
+from dataclasses import dataclass
 from pathlib import Path
 
 from bitarray import frozenbitarray
 from bitarray.util import ba2int, int2ba
 from frozendict import frozendict
 
-from logic_nodes import LogicNodeType, Wire, DirectLogicNodeType, OutputPin, InputPin, NAND_2W1, CombinedLogicNode, \
+from .logic_nodes import LogicNodeType, Wire, DirectLogicNodeType, OutputPin, InputPin, NAND_2W1, CombinedLogicNode, \
     build_or, CONST
-from circuit_parser import Circuit, GateReference, find_gate, GateShape
-from specification_parser import load_all_components
+from .circuit_parser import Circuit, GateReference, find_gate, GateShape
+from .specification_parser import load_all_components
+
+Pos = tuple[int, int]
 
 
-def build_connections(circuit: Circuit) -> dict[tuple[int, int], set[tuple[int, int]]]:
-    connections: defaultdict[tuple[int, int], set[tuple[int, int]]] = defaultdict(set)
+def build_connections(circuit: Circuit) -> dict[Pos, set[Pos]]:
+    connections: defaultdict[Pos, set[Pos]] = defaultdict(set)
     for wire in circuit.wires:
         if len(wire.positions) > 1:
             a, b = connections[wire.positions[0]], connections[wire.positions[-1]]
@@ -27,15 +30,56 @@ def build_connections(circuit: Circuit) -> dict[tuple[int, int], set[tuple[int, 
     return connections
 
 
-def build_gate(circuit_name: str, circuit: Circuit) -> CombinedLogicNode:
+@dataclass
+class PinInfo:
+    gate_ref: GateReference
+    node_type: LogicNodeType
+    gate_shape: GateShape
+    name: str
+    connection_name: str
+
+    @property
+    def is_io(self):
+        return self.gate_shape.is_io
+
+    @property
+    def id(self):
+        return str(self.gate_ref.id)
+
+    @property
+    def connector(self):
+        return (None if self.is_io else self.id), self.connection_name
+
+    @property
+    def is_output(self):
+        return self.name in self.node_type.outputs
+
+    @property
+    def is_input(self):
+        return self.name in self.node_type.inputs
+
+    @property
+    def bits(self):
+        return 8 if self.gate_shape.pins[self.name].is_bytes else 1
+
+    @property
+    def desc(self) -> InputPin | OutputPin:
+        return self.node_type.inputs[self.name] if self.is_input else self.node_type.outputs[self.name]
+
+    @property
+    def summary(self):
+        return f"<{self.node_type.name}: {self.id} {self.is_input=} {self.is_output=}>"
+
+
+def build_connected_groups(circuit: Circuit) -> tuple[dict[str, LogicNodeType], list[list[PinInfo]], list[PinInfo],
+                                                      dict[str, InputPin], dict[str, OutputPin]]:
     connections = {p: frozenset(ps) for p, ps in build_connections(circuit).items()}
-    wires: list[Wire] = []
-    nodes: dict[str, LogicNodeType] = {}
-    inputs: dict[str, InputPin] = {}
-    outputs: dict[str, OutputPin] = {}
-    connected_groups: defaultdict[frozenset[tuple[int, int]],
-                                  list[tuple[GateReference, LogicNodeType, GateShape, str, str]]] = defaultdict(list)
+    connected_groups: defaultdict[frozenset[Pos], list[PinInfo]] = defaultdict(list)
+    nodes = {}
     missing_pins = []
+    circuit_inputs = {}
+    circuit_outputs = {}
+
     for gate in circuit.gates:
         _, shape = find_gate(gate)
         node = get_node(gate)
@@ -53,72 +97,116 @@ def build_gate(circuit_name: str, circuit: Circuit) -> CombinedLogicNode:
                 bit_size = 1 if not pin.is_bytes else 8
                 if pin.is_input:  # This is a pin that takes an input to the outside of this circuit
                     # So this is an output of the circuit
-                    outputs[pin_name] = OutputPin(bit_size)
+                    circuit_outputs[pin_name] = OutputPin(bit_size)
                 else:
-                    inputs[pin_name] = InputPin(bit_size)
+                    circuit_inputs[pin_name] = InputPin(bit_size)
             else:
                 pin_name = str(name)
             if p in connections:
                 group = connections[p]
-                connected_groups[group].append((gate, node, shape, str(name), pin_name))
+                connected_groups[group].append(PinInfo(gate, node, shape, str(name), pin_name))
             elif str(name) in node.inputs:
-                missing_pins.append((gate, node, shape, str(name), pin_name))
+                missing_pins.append(PinInfo(gate, node, shape, str(name), pin_name))
 
-    for group in connected_groups.values():
+    return nodes, list(connected_groups.values()), missing_pins, circuit_inputs, circuit_outputs
+
+
+def build_gate(circuit_name: str, circuit: Circuit) -> CombinedLogicNode:
+    wires: list[Wire] = []
+    nodes, connected_groups, missing_pins, circuit_inputs, circuit_outputs = build_connected_groups(circuit)
+
+    delayed_propagation = defaultdict(set)
+
+    def wire(s, t, source_bits=None, target_bits=None):
+        wires.append(Wire(s, t, source_bits, target_bits))
+        (sn, sp), (tn, tp) = s, t
+        if tn is None:  # This connects directly to an output, and therefore isn't delayed
+            delayed_propagation[sn].add(None)
+        elif nodes[tn].inputs[tp].delayed:  # This connects to a delayed output. Don't mark it
+            return
+        elif sn is None:
+            delayed_propagation[None, sp].add(tn)
+        else:
+            delayed_propagation[sn].add(tn)
+
+    for group in connected_groups:
         # The gates that act as inputs into the implicit Or gate, e.g. those with output pins into the gate
-        input_gates = [t for t in group if t[3] not in t[1].inputs]
+        input_gates = [p for p in group if p.is_output]
         if not input_gates:
             continue
 
-        output_gates = [t for t in group if t[3] in t[1].inputs]
-        bit_size = input_gates[0][1].outputs[input_gates[0][3]].bits
+        output_gates = [p for p in group if p.is_input]
+        bit_size = input_gates[0].bits
         if len(input_gates) > 1:
             or_gate = build_or(*map(str, range(len(input_gates))), bit_size=bit_size)
             nodes[or_name := f"OR{len(nodes)}"] = or_gate
             for i, pin in enumerate(input_gates):
-                out = pin[1].outputs[pin[3]]
-                source = (str(pin[0].id) if not pin[2].is_io else None, pin[4])
-                if out.bits != bit_size:
-                    if out.bits == 1:
+                source = pin.connector  # (str(pin.id) if not pin.is_io else None, pin.connection_name)
+                if pin.bits != bit_size:
+                    if pin.bits == 1:
                         nodes[pad_name := f"PAD{len(nodes)}"] = components["TC_PADDER"]
-                        wires.append(Wire(source, (pad_name, "single")))
+                        wire(source, (pad_name, "single"))
                         source = (pad_name, "byte")
                     else:
                         nodes[any_name := f"DEPAD{len(nodes)}"] = components["OR_1W8"]
-                        wires.append(Wire(source, (any_name, "in")))
+                        wire(source, (any_name, "in"))
                         source = (any_name, "out")
-                wires.append(Wire(source, (or_name, str(i))))
+                wire(source, (or_name, str(i)))
             source = or_name, "out"
         else:
-            source = (str(input_gates[0][0].id) if not input_gates[0][2].is_io else None, input_gates[0][4])
+            source = input_gates[0].connector
 
         for pin in output_gates:
-            target = (str(pin[0].id) if not pin[2].is_io else None), pin[4]
-            out = pin[1].inputs[pin[3]]
-            if out.bits != bit_size:
-                if out.bits == 1:
+            target = pin.connector
+            if pin.bits != bit_size:
+                if pin.bits == 1:
                     nodes[any_name := f"DEPAD{len(nodes)}"] = components["OR_1W8"]
-                    wires.append(Wire(source, (any_name, "in")))
+                    wire(source, (any_name, "in"))
                     current_source = (any_name, "out")
                 else:
                     nodes[pad_name := f"PAD{len(nodes)}"] = components["TC_PADDER"]
-                    wires.append(Wire(source, (pad_name, "single")))
+                    wire(source, (pad_name, "single"))
                     current_source = (pad_name, "byte")
             else:
                 current_source = source
-            wires.append(Wire(current_source, target))
+            wire(current_source, target)
     if missing_pins:
         nodes["_"] = CONST
         for pin in missing_pins:
-            inp = pin[1].inputs[pin[3]]
-            target = (str(pin[0].id) if not pin[2].is_io else None), pin[4]
-            if inp.bits != 1:
+            target = pin.connector
+            if pin.bits != 1:
                 for i in range(8):
-                    wires.append(Wire(("_", "false"), target, target_bits=(i, i + 1)))
+                    wire(("_", "false"), target, target_bits=(i, i + 1))
             else:
-                wires.append(Wire(("_", "false"), target))
+                wire(("_", "false"), target)
 
-    return CombinedLogicNode(circuit_name, frozendict(nodes), frozendict(inputs), frozendict(outputs), tuple(wires))
+    # Check which inputs are delayed
+
+    new_inputs = {}
+    for name, old in circuit_inputs.items():
+        frontier = {(None, name)}
+        seen = set()  # This should never be relevant, but just to make sure
+        while frontier:
+            node = frontier.pop()
+            if node in seen:
+                continue
+            seen.add(node)
+            follow = delayed_propagation.get(node, set())
+            if None in follow:
+                new_inputs[name] = InputPin(old.bits, False)
+                break
+            else:
+                frontier.update(follow)
+        else:
+            new_inputs[name] = InputPin(old.bits, True)
+    assert len(new_inputs) == len(circuit_inputs)
+
+    shape = circuit.compute_gate_shape(circuit_name)
+    for name, pin in new_inputs.items():
+        shape.pins[name.split(".")[0]].is_bytes = pin.bits == 8
+        shape.pins[name.split(".")[0]].is_delayed = pin.delayed
+    return CombinedLogicNode(circuit_name, frozendict(nodes), frozendict(new_inputs), frozendict(circuit_outputs),
+                             tuple(wires))
 
 
 def ram_func(args, state: frozenbitarray, delayed):
@@ -217,7 +305,7 @@ def less_func(args, _):
     }), None
 
 
-components = load_all_components((Path("components")))
+components = load_all_components((Path(__file__).parent / "components"))
 builtin_components = {
     "Input1": DirectLogicNodeType("Input1", frozendict(), frozendict({
         "value": OutputPin(1)
@@ -360,7 +448,7 @@ builtin_components = {
     }), frozendict({
     }), 0, lambda *_: (frozendict(), None)),
 
-    "Program": DirectLogicNodeType("Program", frozendict({
+    "Program1": DirectLogicNodeType("Program1", frozendict({
         "address": InputPin(8),
     }), frozendict({
         "out": OutputPin(8),
@@ -398,7 +486,6 @@ def get_node(gate: str | GateReference) -> LogicNodeType:
             if gate.custom_data not in compiled_custom:
                 compiled_custom[gate.custom_data] = build_gate(gate.custom_data, find_gate(gate)[0])
             return compiled_custom[gate.custom_data]
-        print(gate)
         gate_name = gate.name
     else:
         gate_name = gate

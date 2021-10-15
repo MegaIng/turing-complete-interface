@@ -53,7 +53,7 @@ class GateReference:
     def parse(cls, values) -> GateReference:
         name, x, y, r, i, custom_data = (v for v in values)
         return GateReference(
-            name, (int(x), int(y)), int(r), int(i), custom_data
+            name, (int(x), int(y)), int(r), i, custom_data
         )
 
     def translate(self, dp: tuple[int, int]):
@@ -92,6 +92,7 @@ class Circuit:
     wires: list[CircuitWire]
     nand_cost: int
     delay: int
+    shape: GateShape = None
 
     @property
     def score(self):
@@ -112,6 +113,12 @@ class Circuit:
                        int(nand_cost), int(delay))
 
     def compute_gate_shape(self, name: str) -> GateShape:
+        if self.shape is not None:
+            if self.shape.name is None:
+                self.shape.name = name
+            assert name is None or self.shape.name == name, (self.shape.name, name)
+            return self.shape
+
         def translate(p):
             return (int((p[0] + 30) // 8 - 3), int((p[1] + 30) // 8 - 3))
 
@@ -124,8 +131,9 @@ class Circuit:
                 p = translate(gate.pos)
                 if p in blocks:
                     blocks.remove(p)
-                pins[gate.id] = CircuitPin(p, "Input" in DEFAULT_GATES[gate.name].name)
-        return GateShape(name, CUSTOM, pins, list(blocks))
+                pins[gate.id] = CircuitPin(p, "Input" in DEFAULT_GATES[gate.name].name, )
+        self.shape = GateShape(name, CUSTOM, pins, list(blocks))
+        return self.shape
 
 
 @dataclass
@@ -402,7 +410,7 @@ DEFAULT_GATES: dict[str, GateShape] = {
         "value_in": CircuitPin((-13, -5), True, is_delayed=True),
         "value_out": CircuitPin((13, -7), False),
     }, [], big_shape=BigShape((-12, -7), (25, 16))),
-    "Program": GateShape("Program", NORMAL, {
+    "Program1": GateShape("Program1", NORMAL, {
         "address": CircuitPin((-13, -7), True),
         "out": CircuitPin((13, -7), False),
     }, [], big_shape=BigShape((-12, -7), (25, 16)), text=lambda gate: gate.name),

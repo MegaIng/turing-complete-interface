@@ -133,7 +133,7 @@ class CombinedLogicNode(LogicNodeType):
         def group(elements):
             if sum(len(e) for e in elements) > 40:
                 elements = ",\n    ".join(elements)
-                return f"{{\n    {elements}}}"
+                return f"{{\n    {elements}\n}}"
             else:
                 return ", ".join(elements)
 
@@ -167,40 +167,43 @@ wires: {group(wires)}
 
     @cached_property
     def execution_order(self) -> tuple[tuple[Execution, ...], ...]:
-        sorter = TopologicalSorter({})
-        for wire in self.wires:
-            if wire.target[0] is not None:
-                s: LogicNodeType
-                t: LogicNodeType
-                sp: OutputPin
-                tp: InputPin
+        try:
+            sorter = TopologicalSorter({})
+            for wire in self.wires:
+                if wire.target[0] is not None:
+                    s: LogicNodeType
+                    t: LogicNodeType
+                    sp: OutputPin
+                    tp: InputPin
 
-                if wire.source[0] is not None:
-                    dep = (Execution(wire.source[0], False),)
-                else:
-                    dep = ()
-                t = self.nodes[wire.target[0]]
-                tp = t.inputs[wire.target[1]]
-                if tp.delayed:
-                    sorter.add(Execution(wire.target[0], True), *dep)
-                else:
-                    sorter.add(Execution(wire.target[0], False), *dep)
-                    if t.any_delayed:
+                    if wire.source[0] is not None:
+                        dep = (Execution(wire.source[0], False),)
+                    else:
+                        dep = ()
+                    t = self.nodes[wire.target[0]]
+                    tp = t.inputs[wire.target[1]]
+                    if tp.delayed:
                         sorter.add(Execution(wire.target[0], True), *dep)
-            elif wire.source[0] is not None:
-                sorter.add(Execution(wire.source[0], False))
+                    else:
+                        sorter.add(Execution(wire.target[0], False), *dep)
+                        if t.any_delayed:
+                            sorter.add(Execution(wire.target[0], True), *dep)
+                elif wire.source[0] is not None:
+                    sorter.add(Execution(wire.source[0], False))
 
-        sorter.prepare()
-        order = []
-        while sorter.is_active():
-            nodes = sorter.get_ready()
-            current = []
-            for n in nodes:
-                sorter.done(n)
-                assert isinstance(n, Execution), n
-                current.append(Execution(n.node, n.delayed))
-            order.append(tuple(current))
-        return tuple(order)
+            sorter.prepare()
+            order = []
+            while sorter.is_active():
+                nodes = sorter.get_ready()
+                current = []
+                for n in nodes:
+                    sorter.done(n)
+                    assert isinstance(n, Execution), n
+                    current.append(Execution(n.node, n.delayed))
+                order.append(tuple(current))
+            return tuple(order)
+        except Exception as e:
+            raise type(e)(self.name, *e.args)
 
     def evaluate(self, inputs: frozendict[str, frozenbitarray], state: Optional[frozenbitarray],
                  delayed: bool) -> \
@@ -261,7 +264,7 @@ wires: {group(wires)}
                 new_state = None
             return out, new_state, values
         except Exception as e:
-            raise ValueError(f"{self.name}: {e}")
+            raise type(e)(self.name, *e.args)
 
 
 NAND_2W1 = DirectLogicNodeType(
