@@ -1,15 +1,15 @@
 from argparse import ArgumentParser
 from graphlib import CycleError
-from pprint import pprint
 
 import pygame as pg
 from bitarray import bitarray
 import tkinter as tk
 
 from .circuit_compiler import build_connections, build_gate
-from .circuit_parser import CircuitWire, Circuit, GateShape, DEFAULT_GATES, GateReference, load_custom, SCHEMATICS_PATH, \
+from . import circuit_compiler
+from .circuit_parser import CircuitWire, Circuit, GateShape, GateReference, SCHEMATICS_PATH, \
     find_gate
-from .logic_nodes import NAND_2W1, file_safe_name
+from .logic_nodes import file_safe_name
 from .specification_tester import BitsInput
 from .world_view import WorldView
 
@@ -77,7 +77,7 @@ def draw_gate(view: WorldView, gate: GateReference, gate_shape: GateShape,
         view.draw.circle((255 * p.is_bytes, 255 * p.is_delayed, 255 * p.is_input),
                          xy, 0.25)
         if hover_text is not None:
-            hover_text[xy] = f"{gate.id}.{name}: {value.to01()}"
+            hover_text[xy] = f"{gate.id}.{name}: {value.to01()[::-1]}"
     view.draw.text((255, 255, 255), pos, gate_shape.text(gate), size=1, background=((255, 0, 0) if highlight else None))
 
 
@@ -98,7 +98,7 @@ def draw_wire(view: WorldView, wire: CircuitWire):
         view.draw.text((255, 255, 255), pos, str(wire.label), angle=dr.angle_to((1, 0)))
 
 
-def view_circuit(level_name, save_name):
+def view_circuit(level_name, save_name, assembly_name=None):
     pg.init()
     W, H = 640, 480
     FLAGS = pg.RESIZABLE
@@ -106,12 +106,13 @@ def view_circuit(level_name, save_name):
     screen = pg.display.set_mode((W, H), FLAGS)
     W, H = screen.get_size()
     view = WorldView.centered(screen, scale_x=40)
-    # circuit = Circuit.parse((SCHEMATICS_PATH / "architecture" / "LEG" / "circuit.data").read_text())
     circuit = Circuit.parse((SCHEMATICS_PATH / level_name / save_name / "circuit.data").read_text())
+    if level_name == "architecture" and assembly_name is not None:
+        bytes_path = (SCHEMATICS_PATH / level_name / save_name / assembly_name).with_suffix(".bytes")
+        circuit_compiler.program.clear()
+        circuit_compiler.program.frombytes(bytes_path.read_bytes())
     node = build_gate(save_name, circuit)
     print(node.to_spec(file_safe_name))
-    # pprint(node)
-    # pprint(node.execution_order)
 
     current_state = node.create_state()
 
@@ -126,7 +127,6 @@ def view_circuit(level_name, save_name):
 
     wire_values = {}
 
-    hover_text = {}
     cycle = None
 
     def step(state):
@@ -196,8 +196,8 @@ if __name__ == '__main__':
     arg_parser = ArgumentParser()
     arg_parser.add_argument("level_name")
     arg_parser.add_argument("save_name")
-    arg_parser.add_argument("assembly_name", nargs="?")
+    arg_parser.add_argument("assembly_name", nargs="?", default=None)
 
     ns = arg_parser.parse_args()
 
-    view_circuit(ns.level_name, ns.save_name)
+    view_circuit(ns.level_name, ns.save_name, ns.assembly_name)

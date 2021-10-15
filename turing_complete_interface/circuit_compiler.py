@@ -2,7 +2,7 @@ from collections import defaultdict
 from dataclasses import dataclass
 from pathlib import Path
 
-from bitarray import frozenbitarray
+from bitarray import frozenbitarray, bitarray
 from bitarray.util import ba2int, int2ba
 from frozendict import frozendict
 
@@ -226,11 +226,14 @@ def ram_func(args, state: frozenbitarray, delayed):
     return ret, new_state
 
 
+program = bitarray([0] * (2 ** 8), endian="little")
+
+
 def rom_func(*out_names):
     def f(args, state: frozenbitarray, delayed):
         address = ba2int(args["address"])
         ret = frozendict({
-            name: state[(address + i) % 256 * 8:(address + i) % 256 * 8 + 8]
+            name: program[(address + i) % 256 * 8:(address + i) % 256 * 8 + 8]
             for i, name in enumerate(out_names)
         })
         return ret, state
