@@ -9,8 +9,8 @@ wires: {
     b -> nand1.b,
     a -> nand2.a,
     c -> nand2.b,
-    nand1.out -> or.a,
-    nand2.out -> or.b,
+    nand1.out -> or.0,
+    nand2.out -> or.1,
     or.out -> not.in,
     not.out -> out
 }

@@ -1,5 +1,5 @@
 from collections import defaultdict
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from pathlib import Path
 
 from bitarray import frozenbitarray, bitarray
@@ -241,6 +241,55 @@ def rom_func(*out_names):
     return f
 
 
+screens = {}
+
+
+@dataclass
+class AsciiScreen:
+    background_color: tuple[int, int, int]
+    ascii_screen: bytearray = field(default_factory=lambda: bytearray([0] * 18 * 14 * 2))
+    ascii_screen_buffer: bytearray = field(default_factory=lambda: bytearray([0] * 18 * 14 * 2))
+    ascii_cursor: int = 0
+
+    def func(self, args, state: frozenbitarray, delayed):
+        if not delayed:
+            return frozendict(), state
+        if args["write_cursor"].any():
+            match ba2int(args["cursor"]):
+                case 252:
+                    state = ~state
+                case 253:
+                    self.ascii_screen, self.ascii_screen_buffer = self.ascii_screen_buffer, self.ascii_screen
+                case 254:
+                    self.ascii_screen[:] = (0,) * len(self.ascii_screen)
+                case 255:
+                    pass
+                case v:
+                    self.ascii_cursor = v
+        buffered = state[0]
+        target = self.ascii_screen_buffer if buffered else self.ascii_screen
+        if args["write_color"].any():
+            target[self.ascii_cursor * 2] = ba2int(args["color"])
+        if args["write_char"].any():
+            target[self.ascii_cursor * 2 + 1] = ba2int(args["char"])
+        return frozendict(), state
+
+
+def build_ascii(gate):
+    if gate.id not in screens:
+        c = gate.custom_data
+        screens[gate.id] = AsciiScreen((0, 0, 0) if not c else (int(c[0:2], 16), int(c[2:4], 16), int(c[4:6], 16)))
+    screen = screens[gate.id]
+    return DirectLogicNodeType("AsciiScreen", frozendict({
+        "write_cursor": InputPin(1, True),
+        "cursor": InputPin(8, True),
+        "write_color": InputPin(1, True),
+        "color": InputPin(8, True),
+        "write_char": InputPin(1, True),
+        "char": InputPin(8, True),
+    }), frozendict(), 1, screen.func)
+
+
 def stack_func(args, state: frozenbitarray, delayed):
     assert len(state[-8:]) == 8
     address = ba2int(state[-8:])
@@ -289,6 +338,18 @@ def buffer(args, *_):
     return frozendict({"out": args["in"]}), None
 
 
+last_key: int = 0
+
+
+def keyboard(args, _, _1):
+    if args["enable"].any():
+        key = last_key
+    else:
+        key = 0
+    print(key)
+    return frozendict({"out": frozenbitarray(int2ba(key, 8, "little"))}), None
+
+
 one = frozenbitarray("1")
 zero = frozenbitarray("0")
 
@@ -299,13 +360,36 @@ def mul_func(args, _, _1):
     return frozendict({"out": int2ba((a * b) % 256, 8, "little")}), None
 
 
-def less_func(args, _):
+def less_func(args, _, _1):
     au, as_ = ba2int(args["a"], signed=False), ba2int(args["a"], signed=True)
     bu, bs = ba2int(args["b"], signed=False), ba2int(args["b"], signed=True)
     return frozendict({
         "unsigned": one if au < bu else zero,
         "signed": one if as_ < bs else zero
     }), None
+
+
+def build_counter(gate):
+    delta = int(gate.custom_data)
+
+    def counter_func(args, state: frozenbitarray, delayed):
+        if delayed:
+            if args["overwrite"].any():
+                new_state = args["in"]
+            else:
+                new_state = int2ba(ba2int(state) + delta, 8, endian="little")
+        else:
+            new_state = state
+        return frozendict({
+            "out": state
+        }), new_state
+
+    return DirectLogicNodeType("Counter", frozendict({
+        "in": InputPin(8, True),
+        "overwrite": InputPin(1, True),
+    }), frozendict({
+        "out": OutputPin(8)
+    }), 8, counter_func)
 
 
 components = load_all_components((Path(__file__).parent / "components"))
@@ -326,8 +410,7 @@ builtin_components = {
     }), 0, error),
     "Input2": DirectLogicNodeType("Input2", frozendict(), frozendict({
         "a": OutputPin(1),
-        "b": OutputPin(1)}
-    ), 0, error),
+        "b": OutputPin(1)}), 0, error),
     "Input3": DirectLogicNodeType("Input3", frozendict(), frozendict({
         "a": OutputPin(1),
         "b": OutputPin(1),
@@ -425,9 +508,7 @@ builtin_components = {
     }),
     "On": CONST,
     "Mux": components["MUX_2W8"],
-    "Counter": components["COUNTER_8"].renamed({
-        "save": "overwrite",
-    }),
+    "Counter": build_counter,
 
     "Ram": DirectLogicNodeType("Ram", frozendict({
         "load": InputPin(1),
@@ -445,28 +526,32 @@ builtin_components = {
     }), frozendict({
         "value_out": OutputPin(8),
     }), 8 * (2 ** 8) + 8, stack_func),
-    "Screen": DirectLogicNodeType("Screen", frozendict({
+    "Screen": DirectLogicNodeType("Screen", frozendict(), frozendict(), 0, lambda *_: (frozendict(), None)),
+    "Keyboard": DirectLogicNodeType("Keyboard", frozendict({
+        "enable": InputPin(1, False)
     }), frozendict({
-    }), 0, lambda *_: (frozendict(), None)),
+        "out": OutputPin(8)
+    }), 0, keyboard),
+    "AsciiScreen": build_ascii,
 
     "Program1": DirectLogicNodeType("Program1", frozendict({
         "address": InputPin(8),
     }), frozendict({
         "out": OutputPin(8),
-    }), 8 * (2 ** 8), rom_func("out")),
+    }), 0, rom_func("out")),
     "Program2": DirectLogicNodeType("Program4", frozendict({
         "address": InputPin(8),
     }), frozendict({
         "out0": OutputPin(8),
         "out1": OutputPin(8),
-    }), 8 * (2 ** 8), rom_func("out0", "out1")),
+    }), 0, rom_func("out0", "out1")),
     "Program3": DirectLogicNodeType("Program4", frozendict({
         "address": InputPin(8),
     }), frozendict({
         "out0": OutputPin(8),
         "out1": OutputPin(8),
         "out2": OutputPin(8),
-    }), 8 * (2 ** 8), rom_func("out0", "out1", "out2")),
+    }), 0, rom_func("out0", "out1", "out2")),
     "Program4": DirectLogicNodeType("Program4", frozendict({
         "address": InputPin(8),
     }), frozendict({
@@ -474,7 +559,7 @@ builtin_components = {
         "out1": OutputPin(8),
         "out2": OutputPin(8),
         "out3": OutputPin(8),
-    }), 8 * (2 ** 8), rom_func("out0", "out1", "out2", "out3")),
+    }), 0, rom_func("out0", "out1", "out2", "out3")),
     "ByteConstant": byte_constant
 }
 

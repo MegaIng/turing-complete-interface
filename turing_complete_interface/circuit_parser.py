@@ -439,6 +439,20 @@ DEFAULT_GATES: dict[str, GateShape] = {
         "out3": CircuitPin((13, -4), False, is_bytes=True),
     }, [], big_shape=BigShape((-12, -7), (25, 16)), text=lambda gate: gate.name),
 
+    "AsciiScreen": GateShape("AsciiScreen", SPECIAL, {
+        "write_cursor": CircuitPin((-10, -6), True),
+        "cursor": CircuitPin((-10, -5), True, is_bytes=True),
+        "write_color": CircuitPin((-10, -4), True),
+        "color": CircuitPin((-10, -3), True, is_bytes=True),
+        "write_char": CircuitPin((-10, -2), True),
+        "char": CircuitPin((-10, -1), True, is_bytes=True),
+    }, [(0, 0)], big_shape=BigShape((-9, -6), (19, 13))),
+
+    "Keyboard": GateShape("Keyboard", SPECIAL, {
+        "enable": CircuitPin((-2, -1), True),
+        "out": CircuitPin((2, -1), False, is_bytes=True)
+    }, [(0, 0)], big_shape=BigShape((-1, -2), (3, 5))),
+
     "Screen": GateShape("Screen", SPECIAL, {
     }, [(0, 0)], big_shape=BigShape((-15, -11), (31, 22))),
     "LevelGate": GateShape("LevelGate", SPECIAL, {}, [(0, 0)])
