@@ -1,7 +1,7 @@
 name: ADDER_2W4
 
 inputs: a[4], b[4], carry_in
-outputs: result[4], carry_out
+outputs: out[4], carry_out
 
 components: adder1: ADDER_2W1, adder2: ADDER_2W1, adder3: ADDER_2W1, adder4: ADDER_2W1
 
@@ -14,18 +14,18 @@ wires: {
 
     a[0] -> adder1.a,
     b[0] -> adder1.b,
-    adder1.result -> result[0],
+    adder1.out -> out[0],
 
     a[1] -> adder2.a,
     b[1] -> adder2.b,
-    adder2.result -> result[1],
+    adder2.out -> out[1],
 
     a[2] -> adder3.a,
     b[2] -> adder3.b,
-    adder3.result -> result[2],
+    adder3.out -> out[2],
 
     a[3] -> adder4.a,
     b[3] -> adder4.b,
-    adder4.result -> result[3],
+    adder4.out -> out[3],
 
 }

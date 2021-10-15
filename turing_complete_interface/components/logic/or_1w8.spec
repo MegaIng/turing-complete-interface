@@ -7,8 +7,8 @@ wires: {
     in[0:4] -> or1.in,
     in[4:8] -> or2.in,
 
-    or1.out -> or3.a,
-    or2.out -> or3.b,
+    or1.out -> or3.0,
+    or2.out -> or3.1,
     or3.out -> out,
 
 }

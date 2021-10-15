@@ -4,14 +4,14 @@ outputs: out
 components: or1:OR_2W1, or2:OR_2W1, or3:OR_2W1
 
 wires: {
-    in[0] -> or1.a,
-    in[1] -> or1.b,
+    in[0] -> or1.0,
+    in[1] -> or1.1,
 
-    in[2] -> or2.a,
-    in[3] -> or2.b,
+    in[2] -> or2.0,
+    in[3] -> or2.1,
 
-    or1.out -> or3.a,
-    or2.out -> or3.b,
+    or1.out -> or3.0,
+    or2.out -> or3.1,
     or3.out -> out,
 
 }

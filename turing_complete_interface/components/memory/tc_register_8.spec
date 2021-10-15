@@ -1,6 +1,6 @@
 name: TC_REGISTER_8
 
-inputs: load, save, ?value[8]
+inputs: load, ?save, ?value[8]
 outputs: out[8]
 
 components: reg0: REGISTER_4, reg1: REGISTER_4, switch0: SWITCH_1W4, switch1: SWITCH_1W4

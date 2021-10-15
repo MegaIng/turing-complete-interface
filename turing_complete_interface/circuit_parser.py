@@ -5,7 +5,7 @@ import sys
 from dataclasses import dataclass
 from pathlib import Path
 from pprint import pprint
-from typing import Callable
+from typing import Callable, Literal
 
 OR_NO_DATA = """\
 1|Input2`-10`3`0`1`;Output1`-4`3`0`2`;Nand`-4`-3`0`3`|3`0`10``-7,3,-6,3,-5,3;2`0`10``-10,4,-9,4,-8,4,-7,3;1`0`10``-10,2,-9,2,-8,2,-7,3|1,0"""
@@ -127,11 +127,16 @@ class Circuit:
             blocks.add(translate(gate.pos))
         pins = {}
         for gate in self.gates:
-            if gate.name in DEFAULT_GATES and DEFAULT_GATES[gate.name].is_io:
+            if gate.name in DEFAULT_GATES and ((io_shape := DEFAULT_GATES[gate.name]).is_io):
                 p = translate(gate.pos)
                 if p in blocks:
                     blocks.remove(p)
-                pins[gate.id] = CircuitPin(p, "Input" in DEFAULT_GATES[gate.name].name, )
+                for pin_name, pin in io_shape.pins.items():
+                    if len(io_shape.pins) > 1:
+                        out_pin = f"{gate.id}.{pin_name}"
+                    else:
+                        out_pin = gate.id
+                    pins[out_pin] = CircuitPin(p, pin.is_input, pin.is_bytes)
         self.shape = GateShape(name, CUSTOM, pins, list(blocks))
         return self.shape
 
@@ -156,7 +161,7 @@ class GateShape:
     color: tuple[int, int, int]
     pins: dict[str | int, CircuitPin]
     blocks: list[tuple[int, int]]
-    is_io: bool = False
+    is_io: Literal[None, False, "bits", "bytes"] = False
     text: Callable[[GateReference], str] = staticmethod(lambda gate: str(gate.custom_data or gate.name))
     big_shape: BigShape = None
 
@@ -168,59 +173,60 @@ CUSTOM = (30, 165, 174)
 DEFAULT_GATES: dict[str, GateShape] = {
     "Input1": GateShape("Input1", SPECIAL, {
         "value": CircuitPin((1, 0), False)
-    }, [(0, 0), (0, -1), (0, 1)], True),
+    }, [(0, 0), (0, -1), (0, 1)], "bits"),
     "Input2": GateShape("Input2", SPECIAL, {
         "a": CircuitPin((0, 1), False),
         "b": CircuitPin((0, -1), False)
-    }, [(-1, 1), (-1, 0), (-1, -1), (0, 0)], True),
+    }, [(-1, 1), (-1, 0), (-1, -1), (0, 0)], "bits"),
     "Input3": GateShape("Input4", SPECIAL, {
         "a": CircuitPin((1, -2), False),
         "b": CircuitPin((1, -1), False),
         "c": CircuitPin((1, 0), False),
-    }, [(0, -2), (0, -1), (0, 0)], True),
+    }, [(0, -2), (0, -1), (0, 0)], "bits"),
     "Input4": GateShape("Input4", SPECIAL, {
         "a": CircuitPin((1, -2), False),
         "b": CircuitPin((1, -1), False),
         "c": CircuitPin((1, 0), False),
         "d": CircuitPin((1, 1), False)
-    }, [(0, -2), (0, -1), (0, 0), (0, 1)], True),
+    }, [(0, -2), (0, -1), (0, 0), (0, 1)], "bits"),
     "Input1B": GateShape("Input1B", SPECIAL, {
         "value": CircuitPin((1, 0), False, True)
-    }, [(0, 0), (0, -1)], True),
+    }, [(0, 0), (0, -1)], "bytes"),
     "Input1BConditions": GateShape("Input1BConditions", SPECIAL, {
         "value": CircuitPin((1, 0), False, True)
-    }, [(0, 0), (0, -1)], True),
+    }, [(0, 0), (0, -1)], "bytes"),
     "Input1_1B": GateShape("Output1_1B", SPECIAL, {
-        "value": CircuitPin((1, 0), False, True), "control": CircuitPin((0, 1), False)
-    }, [(0, 0), (0, -1)], True),
+        "value": CircuitPin((1, 0), False, is_bytes=True),
+        "control": CircuitPin((0, 1), True)
+    }, [(0, 0), (0, -1)], "bytes"),
 
     "Output1": GateShape("Output1", SPECIAL, {
         "value": CircuitPin((-1, 0), True)
-    }, [(0, 0), (0, 1), (0, -1)], True),
+    }, [(0, 0), (0, 1), (0, -1)], "bits"),
     "Output1B": GateShape("Output1B", SPECIAL, {
         "value": CircuitPin((-1, 0), True, is_bytes=True)
-    }, [(0, 0), (0, 1), (0, -1)], True),
+    }, [(0, 0), (0, 1), (0, -1)], "bytes"),
     "Output1_1B": GateShape("Output1_1B", SPECIAL, {
-        "value": CircuitPin((-1, 0), True),
+        "value": CircuitPin((-1, 0), True, is_bytes=True),
         "control": CircuitPin((0, 1), True)
-    }, [(0, 0), (0, -1)], True),
+    }, [(0, 0), (0, -1)], "bytes"),
     "Output1Car": GateShape("Output1Car", SPECIAL, {
         "value": CircuitPin((-1, 0), True)
-    }, [(0, 0), (0, 1), (0, -1)], True),
+    }, [(0, 0), (0, 1), (0, -1)], "bits"),
     "Output1Sum": GateShape("Output1Sum", SPECIAL, {
         "value": CircuitPin((-1, 0), True)
-    }, [(0, 0), (0, 1), (0, -1)], True),
+    }, [(0, 0), (0, 1), (0, -1)], "bits"),
     "OutputCounter": GateShape("OutputCounter", SPECIAL, {
         "a": CircuitPin((-1, -1), True),
         "b": CircuitPin((-1, 0), True),
         "c": CircuitPin((-1, 1), True)
-    }, [(0, 0), (0, 1), (0, -1)], True),
+    }, [(0, 0), (0, 1), (0, -1)], "bits"),
     "Output4": GateShape("Output4", SPECIAL, {
         "a": CircuitPin((-1, -2), True),
         "b": CircuitPin((-1, -1), True),
         "c": CircuitPin((-1, 0), True),
         "d": CircuitPin((-1, 1), True)
-    }, [(0, 0), (0, 1), (0, 2), (0, -1)], True),
+    }, [(0, 0), (0, 1), (0, 2), (0, -1)], "bits"),
 
     "Nand": GateShape("Nand", NORMAL, {
         "a": CircuitPin((-1, 1), True),
@@ -277,20 +283,20 @@ DEFAULT_GATES: dict[str, GateShape] = {
         "false": CircuitPin((-100000, -100000), False)
     }, [(0, 0)]),
     "ByteConstant": GateShape("ByteConstant", NORMAL, {
-        "out": CircuitPin((1, 0), False)
+        "out": CircuitPin((1, 0), False, is_bytes=True)
     }, [(0, 0)], text=lambda gate: str(gate.custom_data or 0)),
 
     "ByteSwitch": GateShape("ByteSwitch", NORMAL, {
-        "in": CircuitPin((-1, 0), True),
+        "in": CircuitPin((-1, 0), True, is_bytes=True),
         "control": CircuitPin((0, -1), True),
-        "out": CircuitPin((1, 0), False)
+        "out": CircuitPin((1, 0), False, is_bytes=True)
     }, [(0, 0)]),
 
     "Mux": GateShape("Mux", NORMAL, {
-        "a": CircuitPin((-1, 0), True),
-        "b": CircuitPin((-1, 1), True),
+        "a": CircuitPin((-1, 0), True, is_bytes=True),
+        "b": CircuitPin((-1, 1), True, is_bytes=True),
         "control": CircuitPin((-1, -1), True),
-        "out": CircuitPin((1, 0), False)
+        "out": CircuitPin((1, 0), False, is_bytes=True)
     }, [(0, 0), (0, -1), (0, 1)]),
 
     "Demux": GateShape("Demux", NORMAL, {
@@ -317,7 +323,7 @@ DEFAULT_GATES: dict[str, GateShape] = {
     }, [(0, -3), (0, -2), (0, -1), (0, 0), (0, 1), (0, 2), (0, 3), (0, 4)]),
 
     "ByteSplitter": GateShape("ByteSplitter", NORMAL, {
-        "in": CircuitPin((-1, 0), True),
+        "in": CircuitPin((-1, 0), True, is_bytes=True),
         "r0": CircuitPin((1, -3), False),
         "r1": CircuitPin((1, -2), False),
         "r2": CircuitPin((1, -1), False),
@@ -337,17 +343,17 @@ DEFAULT_GATES: dict[str, GateShape] = {
         "r5": CircuitPin((-1, 2), True),
         "r6": CircuitPin((-1, 3), True),
         "r7": CircuitPin((-1, 4), True),
-        "out": CircuitPin((1, 0), False),
+        "out": CircuitPin((1, 0), False, is_bytes=True),
 
     }, [(0, -3), (0, -2), (0, -1), (0, 0), (0, 1), (0, 2), (0, 3), (0, 4)]),
     "Counter": GateShape("Counter", NORMAL, {
-        "in_value": CircuitPin((-1, 0), True, is_delayed=True),
+        "in": CircuitPin((-1, 0), True, is_bytes=True, is_delayed=True),
         "overwrite": CircuitPin((-1, -1), True),
-        "out_value": CircuitPin((1, 0), False)
+        "out": CircuitPin((1, 0), False, is_bytes=True)
     }, [(0, 0), (0, -1)]),
     "Register": GateShape("Register", NORMAL, {
-        "load": CircuitPin((-1, -1), True, is_bytes=True),
-        "save": CircuitPin((-1, 0), True, is_bytes=True),
+        "load": CircuitPin((-1, -1), True),
+        "save": CircuitPin((-1, 0), True),
         "value": CircuitPin((-1, 1), True, is_bytes=True, is_delayed=True),
         "out": CircuitPin((1, 0), False, is_bytes=True),
     }, [(0, 0), (0, 1), (0, -1)]),
@@ -399,38 +405,38 @@ DEFAULT_GATES: dict[str, GateShape] = {
     "Ram": GateShape("Ram", NORMAL, {
         "load": CircuitPin((-13, -7), True),
         "save": CircuitPin((-13, -6), True),
-        "address": CircuitPin((-13, -5), True),
-        "value_in": CircuitPin((-13, -4), True, is_delayed=True),
-        "value_out": CircuitPin((13, -7), False),
+        "address": CircuitPin((-13, -5), True, is_bytes=True),
+        "value_in": CircuitPin((-13, -4), True, is_bytes=True, is_delayed=True),
+        "value_out": CircuitPin((13, -7), False, is_bytes=True),
     }, [], big_shape=BigShape((-12, -7), (25, 16))),
 
     "Stack": GateShape("Stack", NORMAL, {
         "load": CircuitPin((-13, -7), True),
         "save": CircuitPin((-13, -6), True),
-        "value_in": CircuitPin((-13, -5), True, is_delayed=True),
-        "value_out": CircuitPin((13, -7), False),
+        "value_in": CircuitPin((-13, -5), True, is_bytes=True, is_delayed=True),
+        "value_out": CircuitPin((13, -7), False, is_bytes=True),
     }, [], big_shape=BigShape((-12, -7), (25, 16))),
     "Program1": GateShape("Program1", NORMAL, {
-        "address": CircuitPin((-13, -7), True),
-        "out": CircuitPin((13, -7), False),
+        "address": CircuitPin((-13, -7), True, is_bytes=True),
+        "out": CircuitPin((13, -7), False, is_bytes=True),
     }, [], big_shape=BigShape((-12, -7), (25, 16)), text=lambda gate: gate.name),
     "Program2": GateShape("Program4", NORMAL, {
-        "address": CircuitPin((-13, -7), True),
-        "out0": CircuitPin((13, -7), False),
-        "out1": CircuitPin((13, -6), False),
+        "address": CircuitPin((-13, -7), True, is_bytes=True),
+        "out0": CircuitPin((13, -7), False, is_bytes=True),
+        "out1": CircuitPin((13, -6), False, is_bytes=True),
     }, [], big_shape=BigShape((-12, -7), (25, 16)), text=lambda gate: gate.name),
     "Program3": GateShape("Program4", NORMAL, {
-        "address": CircuitPin((-13, -7), True),
-        "out0": CircuitPin((13, -7), False),
-        "out1": CircuitPin((13, -6), False),
-        "out2": CircuitPin((13, -5), False),
+        "address": CircuitPin((-13, -7), True, is_bytes=True),
+        "out0": CircuitPin((13, -7), False, is_bytes=True),
+        "out1": CircuitPin((13, -6), False, is_bytes=True),
+        "out2": CircuitPin((13, -5), False, is_bytes=True),
     }, [], big_shape=BigShape((-12, -7), (25, 16)), text=lambda gate: gate.name),
     "Program4": GateShape("Program4", NORMAL, {
-        "address": CircuitPin((-13, -7), True),
-        "out0": CircuitPin((13, -7), False),
-        "out1": CircuitPin((13, -6), False),
-        "out2": CircuitPin((13, -5), False),
-        "out3": CircuitPin((13, -4), False),
+        "address": CircuitPin((-13, -7), True, is_bytes=True),
+        "out0": CircuitPin((13, -7), False, is_bytes=True),
+        "out1": CircuitPin((13, -6), False, is_bytes=True),
+        "out2": CircuitPin((13, -5), False, is_bytes=True),
+        "out3": CircuitPin((13, -4), False, is_bytes=True),
     }, [], big_shape=BigShape((-12, -7), (25, 16)), text=lambda gate: gate.name),
 
     "Screen": GateShape("Screen", SPECIAL, {

@@ -11,9 +11,9 @@ wires: {
 
     a[0:4] -> adder1.a,
     b[0:4] -> adder1.b,
-    adder1.result -> out[0:4],
+    adder1.out -> out[0:4],
 
     a[4:8] -> adder2.a,
     b[4:8] -> adder2.b,
-    adder2.result -> out[4:8],
+    adder2.out -> out[4:8],
 }

@@ -1,6 +1,6 @@
 name: REGISTER_4
 
-inputs: save, ?in[4]
+inputs: ?save, ?in[4]
 outputs: out[4]
 
 components: reg0: REGISTER_1, reg1: REGISTER_1, reg2: REGISTER_1, reg3: REGISTER_1

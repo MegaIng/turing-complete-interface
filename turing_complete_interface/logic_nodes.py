@@ -113,7 +113,10 @@ class CombinedLogicNode(LogicNodeType):
         }), frozendict({
             r(name): out for name, out in self.outputs.items()
         }), tuple(
-            Wire((r(wire.source[0]), wire.source[1]), (r(wire.target[0]), wire.target[1]),
+            Wire((r(wire.source[0]),
+                  wire.source[1] if wire.source[0] is not None else r(wire.source[1])),
+                 (r(wire.target[0]),
+                  wire.target[1] if wire.target[0] is not None else r(wire.target[1])),
                  wire.source_bits, wire.target_bits)
             for wire in self.wires
         ))
@@ -181,7 +184,10 @@ wires: {group(wires)}
                     else:
                         dep = ()
                     t = self.nodes[wire.target[0]]
-                    tp = t.inputs[wire.target[1]]
+                    try:
+                        tp = t.inputs[wire.target[1]]
+                    except KeyError:
+                        raise KeyError(wire)
                     if tp.delayed:
                         sorter.add(Execution(wire.target[0], True), *dep)
                     else:
@@ -217,7 +223,12 @@ wires: {group(wires)}
                         assert i + node.state_size <= len(state)
                         states[name] = state[i:i + node.state_size]
                         i += node.state_size
-            values = {(None, name): value for name, value in inputs.items()}
+
+            values = {}
+            for name, value in inputs.items():
+                pin = self.inputs[name]
+                assert len(value) == pin.bits, (name, pin, value)
+                values[None, name] = value
             for step in self.execution_order:
                 for exe in step:
                     node = self.nodes[exe.node]
@@ -225,7 +236,9 @@ wires: {group(wires)}
                     for wire in self.wires_by_target.get(exe.node, ()):
                         if node.inputs[wire.target[1]].delayed and not exe.delayed:
                             continue
-                        source = values[wire.source]
+                        source = values.get(wire.source, None)
+                        if source is None:
+                            source = frozenbitarray(node.inputs[wire.target[1]].bits, endian="little")
                         target = args[wire.target[1]]
                         if wire.source_bits is not None:
                             source = source[wire.source_bits[0]:wire.source_bits[1]]
@@ -234,8 +247,11 @@ wires: {group(wires)}
                         else:
                             target[:] = source
                     args = {name: frozenbitarray(v) for name, v in args.items()}
-                    res, new_state, _ = node.evaluate(frozendict(args), states.get(exe.node, None),
-                                                      exe.delayed and delayed)
+                    try:
+                        res, new_state, _ = node.evaluate(frozendict(args), states.get(exe.node, None),
+                                                          exe.delayed and delayed)
+                    except Exception as e:
+                        raise type(e)(exe, *e.args)
                     if new_state is not None and states is not None and exe.delayed and delayed:
                         states[exe.node] = new_state
                     values.update({(exe.node, name): value for name, value in res.items()})
@@ -243,7 +259,10 @@ wires: {group(wires)}
             out = {name: bitarray(out.bits, endian="little") for name, out in self.outputs.items()}
             for wire in self.wires_by_target[None]:
                 source = values[wire.source]
-                target = out[wire.target[1]]
+                try:
+                    target = out[wire.target[1]]
+                except KeyError:
+                    raise KeyError(wire, out)
                 if wire.source_bits is not None:
                     source = source[wire.source_bits[0]:wire.source_bits[1]]
                 if wire.target_bits is not None:
@@ -267,11 +286,17 @@ wires: {group(wires)}
             raise type(e)(self.name, *e.args)
 
 
+def _nand(args, _1, _2):
+    try:
+        return frozendict({"out": ~(args["a"] & args["b"])}), None
+    except Exception as e:
+        raise type(e)(args, *e.args)
+
+
 NAND_2W1 = DirectLogicNodeType(
     "NAND_2W1",
     frozendict({"a": InputPin(1, False), "b": InputPin(1, False)}),
-    frozendict({"out": OutputPin(1)}), 0,
-    lambda v, _1, _2: (frozendict({"out": ~(v["a"] & v["b"])}), None)
+    frozendict({"out": OutputPin(1)}), 0, _nand
 )
 
 

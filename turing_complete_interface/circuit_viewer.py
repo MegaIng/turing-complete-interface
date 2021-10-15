@@ -74,7 +74,7 @@ def draw_gate(view: WorldView, gate: GateReference, gate_shape: GateShape,
         else:
             pin_source = str(gate.id), name
         value = wire_values.get(pin_source, bitarray())
-        view.draw.circle((255 * (value.any()), 255 * p.is_delayed, 255 * p.is_input),
+        view.draw.circle((255 * p.is_bytes, 255 * p.is_delayed, 255 * p.is_input),
                          xy, 0.25)
         if hover_text is not None:
             hover_text[xy] = f"{gate.id}.{name}: {value.to01()}"

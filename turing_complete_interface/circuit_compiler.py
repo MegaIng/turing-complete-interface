@@ -203,8 +203,8 @@ def build_gate(circuit_name: str, circuit: Circuit) -> CombinedLogicNode:
 
     shape = circuit.compute_gate_shape(circuit_name)
     for name, pin in new_inputs.items():
-        shape.pins[name.split(".")[0]].is_bytes = pin.bits == 8
-        shape.pins[name.split(".")[0]].is_delayed = pin.delayed
+        shape.pins[name].is_bytes = pin.bits == 8
+        shape.pins[name].is_delayed = pin.delayed
     return CombinedLogicNode(circuit_name, frozendict(nodes), frozendict(new_inputs), frozendict(circuit_outputs),
                              tuple(wires))
 
@@ -230,7 +230,7 @@ def rom_func(*out_names):
     def f(args, state: frozenbitarray, delayed):
         address = ba2int(args["address"])
         ret = frozendict({
-            name: state[(address + i) % 256 * 8:(address + 1) % 256 * 8 + 8]
+            name: state[(address + i) % 256 * 8:(address + i) % 256 * 8 + 8]
             for i, name in enumerate(out_names)
         })
         return ret, state
@@ -282,7 +282,7 @@ def byte_constant(gate):
     }), 0, f)
 
 
-def buffer(args, _):
+def buffer(args, *_):
     return frozendict({"out": args["in"]}), None
 
 
@@ -424,8 +424,6 @@ builtin_components = {
     "Mux": components["MUX_2W8"],
     "Counter": components["COUNTER_8"].renamed({
         "save": "overwrite",
-        "in": "in_value",
-        "out": "out_value",
     }),
 
     "Ram": DirectLogicNodeType("Ram", frozendict({
