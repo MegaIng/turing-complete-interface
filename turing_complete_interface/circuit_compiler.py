@@ -56,7 +56,7 @@ class PinInfo:
 
     @property
     def bits(self):
-        return 8 if self.gate_shape.pins[self.name].is_bytes else 1
+        return 8 if self.gate_shape.pins[self.name].is_byte else 1
 
     @property
     def desc(self) -> InputPin | OutputPin:
@@ -89,7 +89,7 @@ def build_connected_groups(circuit: Circuit) -> tuple[dict[str, LogicNodeType], 
                     pin_name = str(gate.id)
                 else:
                     pin_name = f"{gate.id}.{name}"
-                bit_size = 1 if not pin.is_bytes else 8
+                bit_size = 1 if not pin.is_byte else 8
                 if pin.is_input:  # This is a pin that takes an input to the outside of this circuit
                     # So this is an output of the circuit
                     circuit_outputs[pin_name] = OutputPin(bit_size)
@@ -198,7 +198,7 @@ def build_gate(circuit_name: str, circuit: Circuit) -> CombinedLogicNode:
 
     shape = compute_gate_shape(circuit, circuit_name)
     for name, pin in new_inputs.items():
-        shape.pins[name].is_bytes = pin.bits == 8
+        shape.pins[name].is_byte = pin.bits == 8
         shape.pins[name].is_delayed = pin.delayed
     return CombinedLogicNode(circuit_name, frozendict(nodes), frozendict(new_inputs), frozendict(circuit_outputs),
                              tuple(wires))

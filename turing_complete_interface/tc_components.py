@@ -10,7 +10,7 @@ from frozendict import frozendict
 from .circuit_parser import GateShape, GateReference, SPECIAL, NORMAL, CircuitPin, BigShape, SCHEMATICS_PATH, CUSTOM, \
     Circuit
 from .logic_nodes import LogicNodeType, DirectLogicNodeType, InputPin, OutputPin, build_or as ln_build_or, \
-    builtins_gates
+    builtins_gates, CombinedLogicNode, Wire
 from .specification_parser import load_all_components
 
 
@@ -31,7 +31,7 @@ def ram_func(args, state: frozenbitarray, delayed):
     return ret, new_state
 
 
-program = bitarray([0] * (2 ** 8), endian="little")
+program = bitarray([0] * 8 * (2 ** 8), endian="little")
 
 
 def build_rom(shape: GateShape, data):
@@ -41,6 +41,7 @@ def build_rom(shape: GateShape, data):
             name: program[(address + i) % 256 * 8:(address + i) % 256 * 8 + 8]
             for i, name in enumerate(out_names)
         })
+        print(args, address, len(program), ret)
         return ret, state
 
     out_names = [name for name, p in shape.pins.items() if not p.is_input]
@@ -132,9 +133,11 @@ def error(*args):
     raise ValueError("Can't execute this node")
 
 
-def byte_constant(gate):
-    assert isinstance(gate, GateReference), gate
-    value = 0 if not gate.custom_data else int(gate.custom_data)
+def byte_constant(gate_or_value):
+    if isinstance(gate_or_value, GateReference):
+        value = 0 if not gate_or_value.custom_data else int(gate_or_value.custom_data)
+    else:
+        value = int(gate_or_value)
     value = frozenbitarray(int2ba(value, 8, endian="little"), )
     res = frozendict({"out": value})
 
@@ -158,7 +161,6 @@ def keyboard(args, _, _1):
         key = last_key
     else:
         key = 0
-    print(key)
     return frozendict({"out": frozenbitarray(int2ba(key, 8, "little"))}), None
 
 
@@ -184,24 +186,21 @@ def less_func(args, _, _1):
 def build_counter(gate):
     delta = int(gate.custom_data)
 
-    def counter_func(args, state: frozenbitarray, delayed):
-        if delayed:
-            if args["overwrite"].any():
-                new_state = args["in"]
-            else:
-                new_state = int2ba(ba2int(state) + delta, 8, endian="little")
-        else:
-            new_state = state
-        return frozendict({
-            "out": state
-        }), new_state
-
-    return DirectLogicNodeType("Counter", frozendict({
-        "in": InputPin(8, True),
-        "overwrite": InputPin(1, True),
-    }), frozendict({
-        "out": OutputPin(8)
-    }), 8, counter_func)
+    return CombinedLogicNode(
+        f"Counter{delta}", frozendict({
+            "counter": spec_components["VARCOUNTER_8"],
+            "delta": byte_constant(delta)
+        }), frozendict({
+            "in": InputPin(8, True),
+            "overwrite": InputPin(1, True),
+        }), frozendict({
+            "out": OutputPin(8)
+        }), (
+            Wire((None, "in"), ("counter", "in")),
+            Wire((None, "overwrite"), ("counter", "save")),
+            Wire(("delta", "out"), ("counter", "delta")),
+            Wire(("counter", "out"), (None, "out"))
+        ))
 
 
 category_colors = {
@@ -220,20 +219,20 @@ text_functions = {
 
 
 def build_or(shape: GateShape, data):
-    is_bytes = None
+    is_byte = None
     ins = []
     out = None
     for n, p in shape.pins.items():
-        if is_bytes is None:
-            is_bytes = p.is_bytes
+        if is_byte is None:
+            is_byte = p.is_byte
         else:
-            assert is_bytes == p.is_bytes
+            assert is_byte == p.is_byte
         if p.is_input:
             ins.append(n)
         else:
             assert out is None
             out = n
-    return ln_build_or(*ins, bit_size=[0, 8][is_bytes], out_name=out)
+    return ln_build_or(*ins, bit_size=[0, 8][is_byte], out_name=out)
 
 
 def noop(*_):
@@ -253,7 +252,7 @@ def load_components():
                 name,
                 color,
                 {
-                    pn: CircuitPin(pd["pos"], pd["type"] == "input", pd["size"] == "bytes", pd.get("is_delayed", False))
+                    pn: CircuitPin(pd["pos"], pd["type"] == "input", pd["size"] == "byte", pd.get("is_delayed", False))
                     for pn, pd in d["pins"].items()
                 },
                 d["blocks"],
@@ -263,15 +262,15 @@ def load_components():
             )
             if d["type"] == "generate":
                 node = eval(d["func"])
-            elif d["type"] == "direct":
+            elif d["type"] in ("direct", "error", "virtual"):
                 node = DirectLogicNodeType(
                     name, frozendict({
-                        pn: InputPin((1, 8)[cp.is_bytes], cp.is_delayed)
+                        pn: InputPin((1, 8)[cp.is_byte], cp.is_delayed)
                         for pn, cp in shape.pins.items() if cp.is_input
                     }), frozendict({
-                        pn: OutputPin((1, 8)[cp.is_bytes])
+                        pn: OutputPin((1, 8)[cp.is_byte])
                         for pn, cp in shape.pins.items() if not cp.is_input
-                    }), d["state_size"], eval(d["func"]))
+                    }), d["state_size"], eval(d.get("func", "error")))
             elif d["type"] == "build":
                 node = eval(d["func"])(shape, d)
             elif d["type"] == "builtin":
@@ -308,7 +307,7 @@ def compute_gate_shape(circuit, name: str) -> GateShape:
                     out_pin = f"{gate.id}.{pin_name}"
                 else:
                     out_pin = gate.id
-                pins[out_pin] = CircuitPin(p, pin.is_input, pin.is_bytes)
+                pins[out_pin] = CircuitPin(p, pin.is_input, pin.is_byte)
     circuit.shape = GateShape(name, CUSTOM, pins, list(blocks))
     return circuit.shape
 

@@ -6,9 +6,9 @@ from bitarray import bitarray
 import tkinter as tk
 
 from .circuit_compiler import build_connections, build_gate
-from . import circuit_compiler
-from .circuit_parser import CircuitWire, Circuit, GateShape, GateReference, SCHEMATICS_PATH, \
-    find_gate
+from .tc_components import screens, AsciiScreen, get_component
+from . import tc_components
+from .circuit_parser import CircuitWire, Circuit, GateShape, GateReference, SCHEMATICS_PATH
 from .logic_nodes import file_safe_name
 from .specification_tester import BitsInput
 from .world_view import WorldView
@@ -74,7 +74,7 @@ def draw_gate(view: WorldView, gate: GateReference, gate_shape: GateShape,
         else:
             pin_source = str(gate.id), name
         value = wire_values.get(pin_source, bitarray())
-        view.draw.circle((255 * p.is_bytes, 255 * p.is_delayed, 255 * p.is_input),
+        view.draw.circle((255 * p.is_byte, 255 * p.is_delayed, 255 * p.is_input),
                          xy, 0.25)
         if hover_text is not None:
             hover_text[xy] = f"{gate.id}.{name}: {value.to01()[::-1]}"
@@ -102,15 +102,18 @@ def view_circuit(level_name, save_name, assembly_name=None):
     pg.init()
     W, H = 640, 480
     FLAGS = pg.RESIZABLE
+    FONT_SIZE = 30
 
     screen = pg.display.set_mode((W, H), FLAGS)
+    font = pg.font.Font("turing_complete_interface/Px437_IBM_BIOS.ttf", FONT_SIZE)
     W, H = screen.get_size()
     view = WorldView.centered(screen, scale_x=40)
     circuit = Circuit.parse((SCHEMATICS_PATH / level_name / save_name / "circuit.data").read_text())
     if level_name == "architecture" and assembly_name is not None:
         bytes_path = (SCHEMATICS_PATH / level_name / save_name / assembly_name).with_suffix(".bytes")
-        circuit_compiler.program.clear()
-        circuit_compiler.program.frombytes(bytes_path.read_bytes())
+        tc_components.program.clear()
+        print(len(bytes_path.read_bytes()))
+        tc_components.program.frombytes(bytes_path.read_bytes())
     node = build_gate(save_name, circuit)
     print(node.to_spec(file_safe_name))
 
@@ -128,6 +131,7 @@ def view_circuit(level_name, save_name, assembly_name=None):
     wire_values = {}
 
     cycle = None
+    pg.key.set_repeat(100, 50)
 
     def step(state):
         args = {}
@@ -141,6 +145,8 @@ def view_circuit(level_name, save_name, assembly_name=None):
         for name, v in values.items():
             bit_widgets[name].value = v
         return state, wire_values, None
+
+    show_ascii = False
 
     connections = build_connections(circuit)
     clock = pg.time.Clock()
@@ -162,42 +168,79 @@ def view_circuit(level_name, save_name, assembly_name=None):
                 case Event(type=pg.VIDEORESIZE, size=size):
                     screen = pg.display.set_mode(size, FLAGS)
                     W, H = screen.get_size()
-                case event if view.handle_event(event):
+                case event if not show_ascii and view.handle_event(event):
                     pass
                 case Event(type=pg.KEYDOWN, key=pg.K_SPACE):
                     current_state, wire_values, cycle = step(current_state)
+                case Event(type=pg.KEYDOWN, key=pg.K_RETURN):
+                    show_ascii = (not show_ascii) and bool(screens)
+                case Event(type=pg.KEYDOWN, key=key):
+                    tc_components.last_key = key % 256
         # Logic
         dt = clock.tick()
         view.update(dt)
 
         # Render
-        hover_text = {}
-        screen.fill((127, 127, 127))
-        for wire in circuit.wires:
-            draw_wire(view, wire)
-        for gate in circuit.gates:
-            _, shape = find_gate(gate)
-            draw_gate(view, gate, shape, hover_text, wire_values, (gate.id in cycle if cycle else False))
-        p = view.s2w(pg.mouse.get_pos())
-        p = int(round(p[0])), int(round(p[1]))
-        if p in connections:
-            for q in connections[p]:
-                view.draw.circle((255, 255, 0), q, 0.75)
+        if show_ascii:
+            ascii_screen: AsciiScreen = next(iter(screens.values()))
+            screen.fill(ascii_screen.background_color)
+            for y in range(14):
+                for x in range(18):
+                    i = y * 18 + x
+                    col, ch = ascii_screen.ascii_screen[2 * i:2 * i + 2]
+                    if ch != 0:
+                        col = (
+                            int(((col & 0b11100000) >> 5) * 255 / 8),
+                            int(((col & 0b00011100) >> 3) * 255 / 8),
+                            int(((col & 0b00000011) >> 0) * 255 / 4),
+                        )
+                        t = font.render(chr(ch), True, col)
+                        screen.blit(t, (x * (FONT_SIZE), y * (FONT_SIZE)))
+        else:
+            hover_text = {}
+            screen.fill((127, 127, 127))
+            for wire in circuit.wires:
+                draw_wire(view, wire)
+            for gate in circuit.gates:
+                shape, _ = get_component(gate)
+                draw_gate(view, gate, shape, hover_text, wire_values, (gate.id in cycle if cycle else False))
+            p = view.s2w(pg.mouse.get_pos())
+            p = int(round(p[0])), int(round(p[1]))
+            if p in connections:
+                for q in connections[p]:
+                    view.draw.circle((255, 255, 0), q, 0.75)
 
-        view.draw.text((0, 0, 0), p, str(p), anchor="bottomleft", background=(127, 127, 127))
-        if t := hover_text.get(p, None):
-            view.draw.text((0, 0, 0), p, t, anchor="topleft", background=(127, 127, 127))
+            view.draw.text((0, 0, 0), p, str(p), anchor="bottomleft", background=(127, 127, 127))
+            if t := hover_text.get(p, None):
+                view.draw.text((0, 0, 0), p, t, anchor="topleft", background=(127, 127, 127))
 
         pg.display.update()
         pg.display.set_caption(f"FPS: {clock.get_fps():.2f}")
 
 
 if __name__ == '__main__':
+    from prompt_toolkit import prompt
+    from prompt_toolkit.completion import WordCompleter, FuzzyCompleter
+
     arg_parser = ArgumentParser()
-    arg_parser.add_argument("level_name")
-    arg_parser.add_argument("save_name")
-    arg_parser.add_argument("assembly_name", nargs="?", default=None)
+    arg_parser.add_argument("-l", "--level", action="store")
+    arg_parser.add_argument("-s", "--save", action="store")
+    arg_parser.add_argument("-a", "--assembly", action="store")
 
     ns = arg_parser.parse_args()
+    if ns.level is None:
+        options = [d.name for d in SCHEMATICS_PATH.iterdir() if d.is_dir()]
+        ns.level = prompt("Enter level name> ", completer=FuzzyCompleter(WordCompleter(options, sentence=True)))
+    if ns.save is None:
+        options = [d.name for d in (SCHEMATICS_PATH / ns.level).iterdir() if d.is_dir()]
+        ns.save = prompt("Enter save name> ", completer=FuzzyCompleter(WordCompleter(options, sentence=True)))
+    if ns.assembly is None and ns.level == "architecture":
+        options = []
+        for actual_level in (SCHEMATICS_PATH / ns.level / ns.save).iterdir():
+            if actual_level.is_dir():
+                for assembly in actual_level.iterdir():
+                    if assembly.suffix == ".bytes":
+                        options.append(actual_level.stem + "/" + assembly.stem)
+        ns.assembly = prompt("Enter assembly name> ", completer=FuzzyCompleter(WordCompleter(options, sentence=True)))
 
-    view_circuit(ns.level_name, ns.save_name, ns.assembly_name)
+    view_circuit(ns.level, ns.save, ns.assembly or None)

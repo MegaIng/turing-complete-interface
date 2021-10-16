@@ -89,6 +89,7 @@ wire_pin: [NAME "."] NAME ["[" sel "]"]
 NAME: /\w+/
 INT: /\d+/
 %ignore /\s+/
+%ignore /#[^\n]*/
 """, parser="lalr", maybe_placeholders=True)
 
 name_query = LarkQuery('/name/*[@type=="NAME"]/@value')
@@ -104,7 +105,11 @@ def load_all_components(base_path: Path) -> dict[str, LogicNodeType]:
     parsed = {}
     sorter = TopologicalSorter()
     for spec in base_path.rglob("*.spec"):
-        tree = parser.parse(spec.read_text("utf-8"))
+        try:
+            tree = parser.parse(spec.read_text("utf-8"))
+        except lark.LarkError:
+            print(f"Can't parse {spec}")
+            continue
         name = name_query.execute(tree)
         parsed[name] = tree
 
