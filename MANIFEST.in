@@ -1,1 +1,2 @@
 recursive-include turing_complete_interface *.spec
+include turing_complete_interface/tc_components.json

@@ -104,6 +104,10 @@ class CombinedLogicNode(LogicNodeType):
     outputs: frozendict[str, OutputPin]
     wires: tuple[Wire, ...]
 
+    def __repr__(self):
+        nodes = [f"<{name}: {node.name}>" for name, node in self.nodes.items()]
+        return f"{type(self).__name__}({self.name!r}, {nodes}, {self.inputs!r}, {self.outputs!r}, {self.wires!r})"
+
     def renamed(self, mapping: Mapping[str, str]) -> CombinedLogicNode:
         r = lambda n: mapping.get(n, n)
         return CombinedLogicNode(self.name, frozendict({

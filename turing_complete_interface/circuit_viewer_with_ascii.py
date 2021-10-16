@@ -5,10 +5,10 @@ import pygame as pg
 from bitarray import bitarray
 import tkinter as tk
 
-from .circuit_compiler import build_connections, build_gate, screens, AsciiScreen
-from . import circuit_compiler
-from .circuit_parser import CircuitWire, Circuit, GateShape, GateReference, SCHEMATICS_PATH, \
-    find_gate
+from .circuit_compiler import build_connections, build_gate
+from .tc_components import screens, AsciiScreen, get_component
+from . import tc_components
+from .circuit_parser import CircuitWire, Circuit, GateShape, GateReference, SCHEMATICS_PATH
 from .logic_nodes import file_safe_name
 from .specification_tester import BitsInput
 from .world_view import WorldView
@@ -111,8 +111,8 @@ def view_circuit(level_name, save_name, assembly_name=None):
     circuit = Circuit.parse((SCHEMATICS_PATH / level_name / save_name / "circuit.data").read_text())
     if level_name == "architecture" and assembly_name is not None:
         bytes_path = (SCHEMATICS_PATH / level_name / save_name / assembly_name).with_suffix(".bytes")
-        circuit_compiler.program.clear()
-        circuit_compiler.program.frombytes(bytes_path.read_bytes())
+        tc_components.program.clear()
+        tc_components.program.frombytes(bytes_path.read_bytes())
     node = build_gate(save_name, circuit)
     print(node.to_spec(file_safe_name))
 
@@ -174,7 +174,7 @@ def view_circuit(level_name, save_name, assembly_name=None):
                 case Event(type=pg.KEYDOWN, key=pg.K_RETURN):
                     show_ascii = (not show_ascii) and bool(screens)
                 case Event(type=pg.KEYDOWN, key=key):
-                    circuit_compiler.last_key = key % 256
+                    tc_components.last_key = key % 256
         # Logic
         dt = clock.tick()
         view.update(dt)
@@ -201,7 +201,7 @@ def view_circuit(level_name, save_name, assembly_name=None):
             for wire in circuit.wires:
                 draw_wire(view, wire)
             for gate in circuit.gates:
-                _, shape = find_gate(gate)
+                shape, _ = get_component(gate)
                 draw_gate(view, gate, shape, hover_text, wire_values, (gate.id in cycle if cycle else False))
             p = view.s2w(pg.mouse.get_pos())
             p = int(round(p[0])), int(round(p[1]))
