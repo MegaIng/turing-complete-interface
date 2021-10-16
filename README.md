@@ -26,7 +26,7 @@ python -m turing_complete_interface.circuit_viewer [-l <level_name>] [-s <save_n
 Example:
 
 ```
-python -m turing_complete_interface.circuit_viewer -l "architecture" -a "OVERTURE" -a "circumference/example"
+python -m turing_complete_interface.circuit_viewer -l "architecture" -s "OVERTURE" -a "circumference/example"
 ```
 
 Will execute your implementation of OVERTURE with the circumference program.
@@ -40,7 +40,6 @@ Pressing space in the pygame window will do one simulation step, holding in down
 ## Contributing
 Pull requests are welcome. For major changes, please open an issue first to discuss what you would like to change.
 
-Please make sure to update tests as appropriate.
 
 ## License
 [MIT](https://choosealicense.com/licenses/mit/)
