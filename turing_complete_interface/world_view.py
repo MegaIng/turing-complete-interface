@@ -123,7 +123,7 @@ def _forward_to_pygame_draw(*, points: tuple[str | int, ...] = (), lists: tuple[
                     (lambda s: max(int(round(self.viewer.sw2s(s))), 1), sizes)
             ):
                 for a in t:
-                    if isinstance(a, int):
+                    if isinstance(a, int) and len(args) > a:
                         args[a] = f(args[a])
                     elif a in kwargs:
                         kwargs[a] = f(kwargs[a])

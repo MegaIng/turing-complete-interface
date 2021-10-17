@@ -1,10 +1,14 @@
+from abc import ABC
 from argparse import ArgumentParser
 from graphlib import CycleError
+from pprint import pprint
+from typing import Callable
 
 import pygame as pg
 from bitarray import bitarray
 import tkinter as tk
 
+from turing_complete_interface.execution_compiler import Program
 from .circuit_compiler import build_connections, build_gate
 from .tc_components import screens, AsciiScreen, get_component
 from . import tc_components
@@ -41,6 +45,51 @@ BYTE_COLORS = {
     10: (122, 122, 122),
     11: (54, 54, 54),
 }
+
+
+class WorldHandler(ABC):
+    def handle_event(self, event: pg.event.Event):
+        pass
+
+    def update(self, dt: int):
+        pass
+
+    def draw(self, screen: pg.Surface):
+        pass
+
+    def get_input(self) -> int:
+        return 0
+
+    def took_input(self):
+        pass
+
+    def got_output(self, v: int):
+        pass
+
+
+class FastBotTurtle(WorldHandler):
+    def __init__(self, screen):
+        self.pos = (0, 0)
+        self.line = [(0, 0)]
+        self.view = WorldView(screen, scale_x=20, scale_y=20)
+
+    def handle_event(self, event: pg.event.Event):
+        return self.view.handle_event(event)
+
+    def update(self, dt: int):
+        self.view.update(dt)
+
+    def draw(self, screen: pg.Surface):
+        screen.fill((255, 255, 255))
+        if len(self.line) >= 2:
+            self.view.draw.lines((0, 0, 0), False, self.line, width=0.1)
+        self.view.draw.circle((255, 0, 0), self.pos, 0.2)
+
+    def got_output(self, v: int):
+        dx, dy = {0: (1, 0), 1: (0, 1), 2: (-1, 0), 3: (0, -1)}.get(v, (0, 0))
+        if dx != dy:
+            self.pos = self.pos[0] + dx, self.pos[1] + dy
+            self.line.append(self.pos)
 
 
 def draw_gate(view: WorldView, gate: GateReference, gate_shape: GateShape,
@@ -98,13 +147,16 @@ def draw_wire(view: WorldView, wire: CircuitWire):
         view.draw.text((255, 255, 255), pos, str(wire.label), angle=dr.angle_to((1, 0)))
 
 
-def view_circuit(level_name, save_name, assembly_name=None):
+def view_circuit(level_name, save_name, assembly_name=None,
+                 output_handler: Callable[[pg.Surface], WorldHandler] = None):
     pg.init()
     W, H = 640, 480
     FLAGS = pg.RESIZABLE
     FONT_SIZE = 30
 
     screen = pg.display.set_mode((W, H), FLAGS)
+    if output_handler is not None:
+        output_handler = output_handler(screen)
     font = pg.font.Font("turing_complete_interface/Px437_IBM_BIOS.ttf", FONT_SIZE)
     W, H = screen.get_size()
     view = WorldView.centered(screen, scale_x=40)
@@ -116,6 +168,7 @@ def view_circuit(level_name, save_name, assembly_name=None):
         tc_components.program.frombytes(bytes_path.read_bytes())
     node = build_gate(save_name, circuit)
     print(node.to_spec(file_safe_name))
+    pprint(list(zip(node.execution_order + (None,), Program(node).life_wires)))
 
     current_state = node.create_state()
 
@@ -137,6 +190,8 @@ def view_circuit(level_name, save_name, assembly_name=None):
         args = {}
         for name in node.inputs:
             args[name] = bit_widgets[name].value
+        if output_handler is not None:
+            args["3.value"] = output_handler.get_input()
         try:
             state, values, wire_values = node.calculate(state, **args)
         except CycleError as e:
@@ -144,9 +199,14 @@ def view_circuit(level_name, save_name, assembly_name=None):
             return state, {}, [exe.node for exe in e.args[-1]]
         for name, v in values.items():
             bit_widgets[name].value = v
+        if output_handler is not None:
+            if values["3.control"]:
+                output_handler.took_input()
+            if values["4.control"]:
+                output_handler.got_output(values["4.value"])
         return state, wire_values, None
 
-    show_ascii = False
+    show_circuit = True
 
     connections = build_connections(circuit)
     clock = pg.time.Clock()
@@ -168,34 +228,45 @@ def view_circuit(level_name, save_name, assembly_name=None):
                 case Event(type=pg.VIDEORESIZE, size=size):
                     screen = pg.display.set_mode(size, FLAGS)
                     W, H = screen.get_size()
-                case event if not show_ascii and view.handle_event(event):
+                case event if show_circuit and view.handle_event(event):
                     pass
-                case Event(type=pg.KEYDOWN, key=pg.K_SPACE):
-                    current_state, wire_values, cycle = step(current_state)
+                case event if not show_circuit and output_handler and output_handler.handle_event(event):
+                    pass
                 case Event(type=pg.KEYDOWN, key=pg.K_RETURN):
-                    show_ascii = (not show_ascii) and bool(screens)
+                    show_circuit = not show_circuit
                 case Event(type=pg.KEYDOWN, key=key):
                     tc_components.last_key = key % 256
         # Logic
         dt = clock.tick()
         view.update(dt)
+        if pg.key.get_pressed()[pg.K_SPACE]:
+            current_state, wire_values, cycle = step(current_state)
+        if output_handler is not None:
+            output_handler.update(dt)
 
         # Render
-        if show_ascii:
-            ascii_screen: AsciiScreen = next(iter(screens.values()))
-            screen.fill(ascii_screen.background_color)
-            for y in range(14):
-                for x in range(18):
-                    i = y * 18 + x
-                    col, ch = ascii_screen.ascii_screen[2 * i:2 * i + 2]
-                    if ch != 0:
-                        col = (
-                            int(((col & 0b11100000) >> 5) * 255 / 8),
-                            int(((col & 0b00011100) >> 3) * 255 / 8),
-                            int(((col & 0b00000011) >> 0) * 255 / 4),
-                        )
-                        t = font.render(chr(ch), True, col)
-                        screen.blit(t, (x * (FONT_SIZE), y * (FONT_SIZE)))
+        if not show_circuit:
+            if output_handler is None:
+                try:
+                    ascii_screen: AsciiScreen = next(iter(screens.values()))
+                except StopIteration:
+                    pass
+                else:
+                    screen.fill(ascii_screen.background_color)
+                    for y in range(14):
+                        for x in range(18):
+                            i = y * 18 + x
+                            col, ch = ascii_screen.ascii_screen[2 * i:2 * i + 2]
+                            if ch != 0:
+                                col = (
+                                    int(((col & 0b11100000) >> 5) * 255 / 8),
+                                    int(((col & 0b00011100) >> 3) * 255 / 8),
+                                    int(((col & 0b00000011) >> 0) * 255 / 4),
+                                )
+                                t = font.render(chr(ch), True, col)
+                                screen.blit(t, (x * (FONT_SIZE), y * (FONT_SIZE)))
+            else:
+                output_handler.draw(screen)
         else:
             hover_text = {}
             screen.fill((127, 127, 127))
@@ -226,6 +297,7 @@ if __name__ == '__main__':
     arg_parser.add_argument("-l", "--level", action="store")
     arg_parser.add_argument("-s", "--save", action="store")
     arg_parser.add_argument("-a", "--assembly", action="store")
+    arg_parser.add_argument("--fast-bot-turtle", action="store_true")
 
     ns = arg_parser.parse_args()
     if ns.level is None:
@@ -243,4 +315,6 @@ if __name__ == '__main__':
                         options.append(actual_level.stem + "/" + assembly.stem)
         ns.assembly = prompt("Enter assembly name> ", completer=FuzzyCompleter(WordCompleter(options, sentence=True)))
 
-    view_circuit(ns.level, ns.save, ns.assembly or None)
+    view_circuit(ns.level, ns.save, ns.assembly or None,
+                 FastBotTurtle if ns.fast_bot_turtle else None
+                 )

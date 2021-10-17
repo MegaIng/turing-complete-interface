@@ -1077,7 +1077,6 @@
           "type": "output"
         }
       },
-      "state_size": 0,
       "type": "combined",
       "spec": "BYTE_LESS"
     },
@@ -1355,6 +1354,48 @@
         }
       },
       "spec": "NOT_1W8",
+      "type": "combined"
+    },
+    "ByteAnd": {
+      "blocks": [
+        [
+          0,
+          0
+        ],
+        [
+          0,
+          -1
+        ]
+      ],
+      "pins": {
+        "a": {
+          "is_delayed": false,
+          "pos": [
+            -1,
+            -1
+          ],
+          "size": "byte",
+          "type": "input"
+        },
+        "b": {
+          "is_delayed": false,
+          "pos": [
+            -1,
+            0
+          ],
+          "size": "byte",
+          "type": "input"
+        },
+        "out": {
+          "pos": [
+            1,
+            0
+          ],
+          "size": "byte",
+          "type": "output"
+        }
+      },
+      "spec": "AND_2W8",
       "type": "combined"
     },
     "ByteOr": {

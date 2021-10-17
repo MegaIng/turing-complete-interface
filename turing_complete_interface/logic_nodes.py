@@ -333,7 +333,6 @@ SR_LATCH = DirectLogicNodeType(
 _false = frozenbitarray("0")
 _true = frozenbitarray("1")
 
-
 CONST = DirectLogicNodeType(
     "CONST",
     frozendict(), frozendict({
