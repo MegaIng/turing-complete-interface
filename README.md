@@ -22,6 +22,8 @@ Note that when you get error messages you can try to do `pip uninstall lark-pars
 ```bash
 python -m turing_complete_interface.circuit_viewer [-l <level_name>] [-s <save_name>] [-a <assembly_name>]
 ```
+When you don't pass some of ``-l``, `-s`, ``-a``, a prompt with autocomplete will appear in the terminal (will not ask for assembly on non architecture levels)
+
 
 Example:
 
@@ -35,7 +37,12 @@ This will open two windows:
 
 A pygame window displaying the circuit layout and a tkinter window allowing you to modify the inputs and easily see the output values off your circuit.
 
-Pressing space in the pygame window will do one simulation step, holding in down multiple. WARNING: Currently a step is slow, and holding Space down will freeze the windows. Press Enter to view a placed AsciiScreen. Keyboard also works.
+Pressing space in the pygame window will do one simulation step, holding in down multiple. WARNING: Currently a step is slow, and holding Space down will slow down the FPS. Press Enter to view a placed AsciiScreen/FastBotTurtle. Keyboard also works.
+
+
+### FastBotTurtle
+
+Something that is currently not in the game. This mode allows you to run a program with FastBOT controls, that draws a line behind it like a turtle drawing library would. Just add `--fast-bot-turtle` to the command line. Assumes you have an architecture level loaded.
 
 ## Contributing
 Pull requests are welcome. For major changes, please open an issue first to discuss what you would like to change.
