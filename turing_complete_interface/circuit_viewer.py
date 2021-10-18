@@ -9,6 +9,7 @@ from bitarray import bitarray
 import tkinter as tk
 
 from turing_complete_interface.execution_compiler import Program
+from turing_complete_interface.tc_assembler import assemble
 from .circuit_compiler import build_connections, build_gate
 from .tc_components import screens, AsciiScreen, get_component
 from . import tc_components
@@ -162,10 +163,10 @@ def view_circuit(level_name, save_name, assembly_name=None,
     view = WorldView.centered(screen, scale_x=40)
     circuit = Circuit.parse((SCHEMATICS_PATH / level_name / save_name / "circuit.data").read_text())
     if level_name == "architecture" and assembly_name is not None:
-        bytes_path = (SCHEMATICS_PATH / level_name / save_name / assembly_name).with_suffix(".bytes")
+        assembly_path = (SCHEMATICS_PATH / level_name / save_name / assembly_name).with_suffix(".assembly")
+        assembled = assemble(SCHEMATICS_PATH / level_name / save_name, assembly_path)
         tc_components.program.clear()
-        print(len(bytes_path.read_bytes()))
-        tc_components.program.frombytes(bytes_path.read_bytes())
+        tc_components.program.frombytes(assembled)
     node = build_gate(save_name, circuit)
     print(node.to_spec(file_safe_name))
     pprint(list(zip(node.execution_order + (None,), Program(node).life_wires)))
