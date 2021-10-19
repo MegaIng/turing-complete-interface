@@ -8,7 +8,6 @@ import pygame as pg
 from bitarray import bitarray
 import tkinter as tk
 
-from turing_complete_interface.execution_compiler import Program
 from turing_complete_interface.tc_assembler import assemble
 from .circuit_compiler import build_connections, build_gate
 from .tc_components import screens, AsciiScreen, get_component
@@ -169,7 +168,6 @@ def view_circuit(level_name, save_name, assembly_name=None,
         tc_components.program.frombytes(assembled)
     node = build_gate(save_name, circuit)
     print(node.to_spec(file_safe_name))
-    pprint(list(zip(node.execution_order + (None,), Program(node).life_wires)))
 
     current_state = node.create_state()
 
