@@ -8,10 +8,10 @@ import pygame as pg
 from bitarray import bitarray
 import tkinter as tk
 
-from turing_complete_interface.execution_compiler import Program
+from turing_complete_interface.circuit_builder import build_circuit, IOPosition, Space
 from turing_complete_interface.tc_assembler import assemble
 from .circuit_compiler import build_connections, build_gate
-from .tc_components import screens, AsciiScreen, get_component
+from .tc_components import screens, AsciiScreen, get_component, compute_gate_shape
 from . import tc_components
 from .circuit_parser import CircuitWire, Circuit, GateShape, GateReference, SCHEMATICS_PATH
 from .logic_nodes import file_safe_name
@@ -169,7 +169,13 @@ def view_circuit(level_name, save_name, assembly_name=None,
         tc_components.program.frombytes(assembled)
     node = build_gate(save_name, circuit)
     print(node.to_spec(file_safe_name))
-    pprint(list(zip(node.execution_order + (None,), Program(node).life_wires)))
+    space = Space(-31, -31, 64, 64)
+    try:
+        circuit = build_circuit(node, IOPosition.from_circuit(circuit), space,
+                                circuit.level_version)
+    except ValueError as e:
+        print(e)
+    print(circuit.to_string())
 
     current_state = node.create_state()
 
@@ -271,11 +277,20 @@ def view_circuit(level_name, save_name, assembly_name=None,
         else:
             hover_text = {}
             screen.fill((127, 127, 127))
+            for x in range(space.x, space.x + space.w):
+                for y in range(space.y, space.y + space.h):
+                    k = translate((x, y))
+                    if (k[0] + k[1]) % 2 == 1:
+                        view.draw.rect((65,65,65), (x - 0.5, y - 0.5, 1.1, 1.1))
+                    else:
+                        view.draw.rect((127, 127, 127), (x - 0.5, y - 0.5, 1.1, 1.1))
             for wire in circuit.wires:
                 draw_wire(view, wire)
             for gate in circuit.gates:
-                shape, _ = get_component(gate)
+                shape, _ = get_component(gate.name, gate.custom_data)
                 draw_gate(view, gate, shape, hover_text, wire_values, (gate.id in cycle if cycle else False))
+            # shape = compute_gate_shape(circuit, "main")
+            # draw_gate(view, GateReference("main", (0,0), 0, "-1", ""), shape)
             p = view.s2w(pg.mouse.get_pos())
             p = int(round(p[0])), int(round(p[1]))
             if p in connections:

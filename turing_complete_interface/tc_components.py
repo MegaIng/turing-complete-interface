@@ -133,18 +133,15 @@ def error(*args):
     raise ValueError("Can't execute this node")
 
 
-def byte_constant(gate_or_value):
-    if isinstance(gate_or_value, GateReference):
-        value = 0 if not gate_or_value.custom_data else int(gate_or_value.custom_data)
-    else:
-        value = int(gate_or_value)
-    value = frozenbitarray(int2ba(value, 8, endian="little"), )
+def byte_constant(_, raw_value):
+    i_value = 0 if not raw_value else int(raw_value)
+    value = frozenbitarray(int2ba(i_value, 8, endian="little"), )
     res = frozendict({"out": value})
 
     def f(*args):
         return res, None
 
-    return DirectLogicNodeType("Constant", frozendict(), frozendict({
+    return DirectLogicNodeType(f"Constant{i_value}", frozendict(), frozendict({
         "out": OutputPin(8)
     }), 0, f)
 
@@ -183,13 +180,13 @@ def less_func(args, _, _1):
     }), None
 
 
-def build_counter(gate):
-    delta = int(gate.custom_data)
+def build_counter(gate_name, custom_data):
+    delta = int(custom_data)
 
     return CombinedLogicNode(
         f"Counter{delta}", frozendict({
             "counter": spec_components["VARCOUNTER_8"],
-            "delta": byte_constant(delta)
+            "delta": byte_constant("", delta)
         }), frozendict({
             "in": InputPin(8, True),
             "overwrite": InputPin(1, True),
@@ -244,6 +241,7 @@ def load_components():
         data = json.load(f)
 
     components: dict[str, tuple[GateShape, LogicNodeType | Callable[[GateReference], LogicNodeType]]] = {}
+    node_to_component: dict[str, tuple[str, str]] = {}
     for category, raw in data.items():
         assert category in category_colors, category
         color = category_colors[category]
@@ -280,7 +278,10 @@ def load_components():
             else:
                 assert False, d["type"]
             components[name] = shape, node
-    return components
+            if isinstance(node, LogicNodeType):
+                assert node.name not in node_to_component, f"Non unique node name {node.name}"
+                node_to_component[node.name] = name, ""
+    return components, node_to_component
 
 
 def compute_gate_shape(circuit, name: str) -> GateShape:
@@ -322,26 +323,39 @@ def load_custom():
 
 
 spec_components = load_all_components(Path())
-std_components: dict[str, tuple[GateShape, LogicNodeType]] = load_components()
+std_components: dict[str, tuple[GateShape, LogicNodeType]]
+rev_components: dict[str, tuple[str, str]]
+std_components, rev_components = load_components()
 custom_components: dict[str, tuple[Circuit, GateShape | None, LogicNodeType | None]] = load_custom()
 
 
-def get_component(gate: str | GateReference) -> tuple[GateShape, LogicNodeType]:
-    if isinstance(gate, GateReference):
-        if gate.name == "Custom":
-            assert gate.custom_data in custom_components
-            circuit, shape, node = custom_components[gate.custom_data]
-            if shape is None:
-                from .circuit_compiler import build_gate
-                shape = compute_gate_shape(circuit, gate.name)
-                node = build_gate(gate.name, circuit)
-                custom_components[gate.custom_data] = circuit, shape, node
-            return custom_components[gate.custom_data][1:]
-        gate_name = gate.name
-    else:
-        gate_name = gate
+def get_component(gate_name: str, custom_data: str, no_node: bool = False) -> tuple[GateShape, LogicNodeType | None]:
+    if gate_name == "Custom":
+        assert custom_data in custom_components
+        circuit, shape, node = custom_components[custom_data]
+        if shape is None:
+            from .circuit_compiler import build_gate
+            shape = compute_gate_shape(circuit, f"{gate_name}_{custom_data}")
+            node = build_gate(f"{gate_name}_{custom_data}", circuit)
+            custom_components[custom_data] = circuit, shape, node
+            if node.name in rev_components:
+                raise ValueError(f"Non unique node name {node.name} (for Custom component {custom_data})")
+            rev_components[node.name] = ("Custom", custom_data)
+        return custom_components[custom_data][1:]
     s, n = std_components[gate_name]
     if callable(n):
-        return s, n(gate)
+        if not no_node:
+            n = n(gate_name, custom_data)
+            if n.name in rev_components:
+                prev = rev_components[n.name]
+                if prev[0] != gate_name:
+                    assert False, f"Non unique name {n.name} for {(gate_name, custom_data)} (previous: {prev})"
+                if prev[1] != custom_data and {prev[1], custom_data} != {"", "0"}:
+                    assert False, f"Non unique name {n.name} for {(gate_name, custom_data)} (previous: {prev})"
+            else:
+                rev_components[n.name] = gate_name, custom_data
+        else:
+            n = None
+        return s, n
     else:
         return s, n

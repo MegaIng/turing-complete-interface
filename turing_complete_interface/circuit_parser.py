@@ -3,8 +3,10 @@ from __future__ import annotations
 import os
 import sys
 from dataclasses import dataclass
+from math import isfinite
 from pathlib import Path
 from typing import Callable, TypedDict
+
 try:
     import nimporter
 except ImportError:
@@ -65,7 +67,7 @@ class GateReference:
             "kind": self.name,
             "position": {"x": self.pos[0], "y": self.pos[1]},
             "rotation": self.rotation,
-            "permanent_id": self.id,
+            "permanent_id": int(self.id),
             "custom_string": self.custom_data
         }
 
@@ -94,7 +96,7 @@ class CircuitWire:
         return {
             "permanent_id": self.id,
             "path": [{"x": p[0], "y": p[1]} for p in self.positions],
-            "kind": ["ck_bit", "ck_bytes"][self.is_byte],
+            "kind": ["ck_bit", "ck_byte"][self.is_byte],
             "color": self.color,
             "comment": self.label
         }
@@ -135,6 +137,10 @@ class BigShape:
     tl: tuple[int, int]
     size: tuple[int, int]
 
+    @property
+    def br(self):
+        return self.tl[0] + self.size[0], self.tl[1] + self.size[1]
+
 
 @dataclass
 class CircuitPin:
@@ -153,6 +159,27 @@ class GateShape:
     is_io: bool = False
     text: Callable[[GateReference], str] = staticmethod(lambda gate: str(gate.custom_data or gate.name))
     big_shape: BigShape = None
+
+    @property
+    def bounding_box(self):
+        min_x = min_y = float("inf")
+        max_x = max_y = -float("inf")
+        for p in (
+                *(p.pos for p in self.pins.values()),
+                *(self.blocks),
+                *((self.big_shape.tl, self.big_shape.br) if self.big_shape is not None else ())
+        ):
+            if p[0] < min_x:
+                min_x = p[0]
+            if p[0] > max_x:
+                max_x = p[0]
+
+            if p[1] < min_y:
+                min_y = p[1]
+            if p[1] > max_y:
+                max_y = p[1]
+        assert all((isfinite(min_x), isfinite(max_x), isfinite(min_y), isfinite(max_y))), (min_x, max_x, min_y, max_y)
+        return min_x, min_y, max_x - min_x + 1, max_y - min_y + 1
 
 
 SPECIAL = (206, 89, 107)
