@@ -4,7 +4,12 @@ import os
 import sys
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Callable
+from typing import Callable, TypedDict
+try:
+    import nimporter
+except ImportError:
+    print("Couldn't import nimporter. Assuming that save_monger is available anyway.")
+import save_monger
 
 
 def pre_parse(text: str) -> list[list[list[list[str]]]]:
@@ -16,20 +21,18 @@ def pre_parse(text: str) -> list[list[list[list[str]]]]:
     ] for section in text.split("|")]
 
 
+class NimPoint(TypedDict):
+    x: int
+    y: int
+
+
 @dataclass
 class GateReference:
     name: str
     pos: tuple[int, int]
     rotation: int
-    id: int
+    id: str
     custom_data: str
-
-    @classmethod
-    def parse(cls, values) -> GateReference:
-        name, x, y, r, i, custom_data = (v for v in values)
-        return GateReference(
-            name, (int(x), int(y)), int(r), i, custom_data
-        )
 
     def translate(self, dp: tuple[int, int]):
         dp = self.rot(dp)
@@ -44,6 +47,28 @@ class GateReference:
         ][self.rotation]
         return a * dp[0] + b * dp[1], c * dp[0] + d * dp[1]
 
+    @classmethod
+    def from_nim(cls,
+                 kind: str,
+                 position: NimPoint,
+                 rotation: int,
+                 permanent_id: int,
+                 custom_string: str) -> GateReference | None:
+        if save_monger.is_virtual(kind):
+            return None
+        return GateReference(
+            kind, (position["x"], position["y"]), rotation, str(permanent_id), custom_string
+        )
+
+    def to_nim(self):
+        return {
+            "kind": self.name,
+            "position": {"x": self.pos[0], "y": self.pos[1]},
+            "rotation": self.rotation,
+            "permanent_id": self.id,
+            "custom_string": self.custom_data
+        }
+
 
 @dataclass
 class CircuitWire:
@@ -54,11 +79,25 @@ class CircuitWire:
     positions: list[tuple[int, int]]
 
     @classmethod
-    def parse(cls, values) -> CircuitWire:
-        i, is_byte, color, label, positions = values
-        assert is_byte in ("0", "1")
-        return CircuitWire(int(i), is_byte == "1", int(color), label,
-                           [(int(x), int(y)) for x, y in zip(positions[::2], positions[1::2])])
+    def from_nim(cls,
+                 permanent_id: int,
+                 path: list[NimPoint],
+                 kind: str,
+                 color: int,
+                 comment: str) -> CircuitWire:
+        assert kind in ("ck_bit", "ck_byte"), kind
+        return CircuitWire(
+            permanent_id, kind == "ck_byte", color, comment, [(p["x"], p["y"]) for p in path]
+        )
+
+    def to_nim(self):
+        return {
+            "permanent_id": self.id,
+            "path": [{"x": p[0], "y": p[1]} for p in self.positions],
+            "kind": ["ck_bit", "ck_bytes"][self.is_byte],
+            "color": self.color,
+            "comment": self.label
+        }
 
 
 @dataclass
@@ -67,6 +106,7 @@ class Circuit:
     wires: list[CircuitWire]
     nand_cost: int
     delay: int
+    level_version: int = 0
     shape: GateShape = None
 
     @property
@@ -75,17 +115,19 @@ class Circuit:
 
     @classmethod
     def parse(cls, text: str) -> Circuit:
-        version, raw_gates, raw_wires, score, *level_version = pre_parse(text)
-        match score:
-            case ((nand_cost, delay), ):
-                nand_cost = int(nand_cost)
-                delay = int(delay)
-            case _:
-                nand_cost = delay = 0
-        assert version == [["1"]], version
-        return Circuit([GateReference.parse(d) for d in raw_gates],
-                       [CircuitWire.parse(d) for d in raw_wires if d != ['']],
-                       int(nand_cost), int(delay))
+        components, circuits, nand, delay, level_version = save_monger.py_parse_state(text)
+        return Circuit(
+            [GateReference.from_nim(**c) for c in components],
+            [CircuitWire.from_nim(**c) for c in circuits],
+            nand, delay, level_version
+        )
+
+    def to_string(self) -> str:
+        return save_monger.parse_state_to_string(
+            [g.to_nim() for g in self.gates],
+            [w.to_nim() for w in self.wires],
+            self.nand_cost, self.delay, self.level_version
+        )
 
 
 @dataclass
