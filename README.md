@@ -44,6 +44,34 @@ Pressing space in the pygame window will do one simulation step, holding in down
 
 Something that is currently not in the game. This mode allows you to run a program with FastBOT controls, that draws a line behind it like a turtle drawing library would. Just add `--fast-bot-turtle` to the command line. Assumes you have an architecture level loaded.
 
+### From verilog
+
+It is possible to load a circuit from a verilog file.
+
+To view such a generated circuit use:
+
+````bash
+python -m turing_complete_interface.circuit_viewer -v <verilog file> -l <level name>
+````
+
+level name is not required, but if passed it is used to correctly set the dimensions of the output circuit space.
+(Future plan is to also include IO information.)
+
+To not view it and instead replace a save you have with the circuit use this:
+
+````bash
+python -m turing_complete_interface.from_verilog <verilog file> -l <level name> -s <save name>
+````
+
+If ``-s`` is not present a name is generated based on the input file name.
+
+Probably the most common level to target (and probably the only safe one right now) is the Component Factory:
+
+````bash
+python -m turing_complete_interface.from_verilog <verilog file> -l component_factory
+````
+
+
 ## Contributing
 Pull requests are welcome. For major changes, please open an issue first to discuss what you would like to change.
 

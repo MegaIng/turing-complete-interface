@@ -853,6 +853,56 @@
       "spec": "TC_DEMUX_3",
       "type": "combined"
     },
+    "BitMemory": {
+      "blocks": [
+        [
+          -1,
+          0
+        ],
+        [
+          0,
+          0
+        ],
+        [
+          0,
+          1
+        ],
+        [
+          0,
+          -1
+        ]
+      ],
+      "pins": {
+        "out": {
+          "pos": [
+            1,
+            0
+          ],
+          "size": "bits",
+          "type": "output"
+        },
+        "save": {
+          "is_delayed": true,
+          "pos": [
+            -1,
+            -1
+          ],
+          "size": "bits",
+          "type": "input"
+        },
+        "in": {
+          "is_delayed": true,
+          "pos": [
+            -1,
+            1
+          ],
+          "size": "bits",
+          "type": "input"
+        }
+      },
+      "spec": "REGISTER_1",
+      "type": "combined"
+    },
     "Buffer": {
       "blocks": [
         [

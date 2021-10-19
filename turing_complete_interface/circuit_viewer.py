@@ -1,6 +1,8 @@
+import json
 from abc import ABC
 from argparse import ArgumentParser
 from graphlib import CycleError
+from pathlib import Path
 from pprint import pprint
 from typing import Callable
 
@@ -10,11 +12,12 @@ import tkinter as tk
 
 from turing_complete_interface.circuit_builder import build_circuit, IOPosition, Space
 from turing_complete_interface.tc_assembler import assemble
+from turing_complete_interface.verilog_parser import parse_verilog
 from .circuit_compiler import build_connections, build_gate
 from .tc_components import screens, AsciiScreen, get_component, compute_gate_shape
 from . import tc_components
 from .circuit_parser import CircuitWire, Circuit, GateShape, GateReference, SCHEMATICS_PATH
-from .logic_nodes import file_safe_name
+from .logic_nodes import file_safe_name, LogicNodeType
 from .specification_tester import BitsInput
 from .world_view import WorldView
 
@@ -148,8 +151,32 @@ def draw_wire(view: WorldView, wire: CircuitWire):
         view.draw.text((255, 255, 255), pos, str(wire.label), angle=dr.angle_to((1, 0)))
 
 
-def view_circuit(level_name, save_name, assembly_name=None,
-                 output_handler: Callable[[pg.Surface], WorldHandler] = None):
+def translate(p):
+    return (int((p[0] + 30) // 8 - 3), int((p[1] + 30) // 8 - 3))
+
+
+def load_circuit(ns) -> tuple[Circuit, LogicNodeType, Space]:
+    if ns.level is not None:
+        level_spaces = json.load(Path(__file__).with_name("level_spaces.json").open())
+        space = Space(*level_spaces.get(ns.level, [-50, -50, 100, 100]))
+    else:
+        space = Space(-50, -50, 100, 100)
+    if ns.verilog is not None:
+        node = parse_verilog(ns.verilog.read_text())
+        circuit = build_circuit(node, IOPosition.from_node(node), space)
+    else:
+        save_name = SCHEMATICS_PATH / ns.level / ns.save
+        circuit = Circuit.parse((save_name / "circuit.data").read_text())
+        if ns.level == "architecture" and ns.assembly is not None:
+            assembly_path = (save_name / ns.assembly).with_suffix(".assembly")
+            assembled = assemble(save_name, assembly_path)
+            tc_components.program.clear()
+            tc_components.program.frombytes(assembled)
+        node = build_gate(save_name, circuit)
+    return circuit, node, space
+
+
+def view_circuit(circuit, node, space, output_handler: Callable[[pg.Surface], WorldHandler] = None):
     pg.init()
     W, H = 640, 480
     FLAGS = pg.RESIZABLE
@@ -161,21 +188,6 @@ def view_circuit(level_name, save_name, assembly_name=None,
     font = pg.font.Font("turing_complete_interface/Px437_IBM_BIOS.ttf", FONT_SIZE)
     W, H = screen.get_size()
     view = WorldView.centered(screen, scale_x=40)
-    circuit = Circuit.parse((SCHEMATICS_PATH / level_name / save_name / "circuit.data").read_text())
-    if level_name == "architecture" and assembly_name is not None:
-        assembly_path = (SCHEMATICS_PATH / level_name / save_name / assembly_name).with_suffix(".assembly")
-        assembled = assemble(SCHEMATICS_PATH / level_name / save_name, assembly_path)
-        tc_components.program.clear()
-        tc_components.program.frombytes(assembled)
-    node = build_gate(save_name, circuit)
-    print(node.to_spec(file_safe_name))
-    space = Space(-31, -31, 64, 64)
-    try:
-        circuit = build_circuit(node, IOPosition.from_circuit(circuit), space,
-                                circuit.level_version)
-    except ValueError as e:
-        print(e)
-    print(circuit.to_string())
 
     current_state = node.create_state()
 
@@ -281,7 +293,7 @@ def view_circuit(level_name, save_name, assembly_name=None,
                 for y in range(space.y, space.y + space.h):
                     k = translate((x, y))
                     if (k[0] + k[1]) % 2 == 1:
-                        view.draw.rect((65,65,65), (x - 0.5, y - 0.5, 1.1, 1.1))
+                        view.draw.rect((65, 65, 65), (x - 0.5, y - 0.5, 1.1, 1.1))
                     else:
                         view.draw.rect((127, 127, 127), (x - 0.5, y - 0.5, 1.1, 1.1))
             for wire in circuit.wires:
@@ -313,6 +325,7 @@ if __name__ == '__main__':
     arg_parser.add_argument("-l", "--level", action="store")
     arg_parser.add_argument("-s", "--save", action="store")
     arg_parser.add_argument("-a", "--assembly", action="store")
+    arg_parser.add_argument("-v", "--verilog", action="store", type=Path)
     arg_parser.add_argument("--fast-bot-turtle", action="store_true")
 
     ns = arg_parser.parse_args()
@@ -331,6 +344,5 @@ if __name__ == '__main__':
                         options.append(actual_level.stem + "/" + assembly.stem)
         ns.assembly = prompt("Enter assembly name> ", completer=FuzzyCompleter(WordCompleter(options, sentence=True)))
 
-    view_circuit(ns.level, ns.save, ns.assembly or None,
-                 FastBotTurtle if ns.fast_bot_turtle else None
-                 )
+    view_circuit(*load_circuit(ns),
+                 FastBotTurtle if ns.fast_bot_turtle else None)

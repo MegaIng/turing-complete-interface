@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from typing import Any, Callable
+from typing import Any, Callable, Collection
 
 from bitarray import bitarray
 
@@ -15,6 +15,7 @@ class IOPosition:
     component_name: str
     pin_mapping: dict[str, str]
     force_id: str = None
+    force_position: tuple[int, int] = None
     custom_data: str = ""
 
     @classmethod
@@ -28,9 +29,19 @@ class IOPosition:
                                   {gate.id: next(iter(shape.pins))}
                                   if len(shape.pins) == 1 else {
                                       f"{gate.id}.{pin_name}": pin_name for pin_name in shape.pins
-                                  }, gate.id, gate.custom_data))
+                                  }, gate.id, gate.pos, gate.custom_data))
         return ios
 
+    @classmethod
+    def from_node(cls, node: CombinedLogicNode) -> list[IOPosition]:
+        ios = []
+        for name, inp in node.inputs.items():
+            ios.append(IOPosition("Input1" if inp.bits == 1 else "Input1B",
+                                  {name: "value"}, custom_data=name))
+        for name, out in node.outputs.items():
+            ios.append(IOPosition("Output1" if out.bits == 1 else "Output1B",
+                                  {name: "value"}, custom_data=name))
+        return ios
 
 @dataclass
 class Space:
@@ -75,7 +86,7 @@ class Space:
 
 
 def build_circuit(node: CombinedLogicNode, io_positions: list[IOPosition], space: Space,
-                  level_version: int = 0) -> Circuit:
+                  level_version: int = 0, place_alone: Collection[str] = (), place_memory_alone=True) -> Circuit:
     taken_ids: set[int] = set()
     i = 1
 
@@ -86,11 +97,14 @@ def build_circuit(node: CombinedLogicNode, io_positions: list[IOPosition], space
         taken_ids.add(i)
         return i
 
-    def place(shape: GateShape, io: bool = True, forced_pos: tuple[int, int] = None):
+    def place(shape: GateShape, io: bool = False, forced_pos: tuple[int, int] = None):
         ox, oy, w, h = shape.bounding_box
 
         def translate(p):
             return (int((p[0] + 30 - ox) // 8 - 3), int((p[1] + 30 - oy) // 8 - 3))
+
+        if forced_pos is not None:
+            forced_pos = forced_pos[0] + ox - space.x, forced_pos[1] + ox - space.y
 
         t, l = space.place(w, h, forced_pos, (translate if io else None))
         return t - ox, l - oy
@@ -99,8 +113,8 @@ def build_circuit(node: CombinedLogicNode, io_positions: list[IOPosition], space
     pin_locations: dict[tuple[str | None, str], tuple[CircuitPin, int, int]] = {}
     for io in io_positions:
         shape, _ = get_component(io.component_name, io.custom_data)
-        pos = place(shape, True)
-        gi = get_id() if io.force_id is not None else io.force_id
+        pos = place(shape, True, io.force_position)
+        gi = get_id() if io.force_id is None else io.force_id
 
         gate_refs.append(GateReference(io.component_name, pos, 0, str(gi), io.custom_data))
 
@@ -110,8 +124,10 @@ def build_circuit(node: CombinedLogicNode, io_positions: list[IOPosition], space
 
     for name, n in node.nodes.items():
         component_name, custom_data = rev_components[n.name]
-        shape, _ = get_component(component_name, custom_data, no_node=True)
-        pos = place(shape)
+        shape, inner_node = get_component(component_name, custom_data, no_node=True)
+        pos = place(shape, (n.name in place_alone)
+                    or (name in place_alone)
+                    or (place_memory_alone and inner_node.state_size != 0))
         gi = get_id()
 
         gate_refs.append(GateReference(component_name, pos, 0, str(gi), custom_data))

@@ -1,0 +1,60 @@
+{
+  "NOT": {
+    "tc": "Not",
+    "pins": {
+      ".A": "in",
+      ".Y": "out"
+    }
+  },
+  "BUF": {
+    "tc": "Buffer",
+    "pins": {
+      ".A": "in",
+      ".Y": "out"
+    }
+  },
+  "DFF": {
+    "tc": "BitMemory",
+    "pins": {
+      ".C": null,
+      ".D": "in",
+      ".Q": "out"
+    },
+    "fix": {
+      "save": 1
+    }
+  },
+  "NAND": {
+    "tc": "Nand",
+    "pins": {
+      ".A": "a",
+      ".B": "b",
+      ".Y": "out"
+    }
+  },
+  "NOR": {
+    "tc": "Nor",
+    "pins": {
+      ".A": "a",
+      ".B": "b",
+      ".Y": "out"
+    }
+  },
+  "OR": {
+    "tc": "Or",
+    "pins": {
+      ".A": "0",
+      ".B": "1",
+      ".Y": "out"
+    }
+  },
+  "OR3": {
+    "tc": "Or3",
+    "pins": {
+      ".A": "0",
+      ".B": "1",
+      ".C": "2",
+      ".Y": "out"
+    }
+  }
+}
