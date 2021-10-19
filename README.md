@@ -46,7 +46,7 @@ Something that is currently not in the game. This mode allows you to run a progr
 
 ### From verilog
 
-It is possible to load a circuit from a verilog file.
+It is possible to load a circuit from a verilog file, if the file was compiled and flattened via YoSys with the techlib by NotEdward on discord (links coming soon).
 
 To view such a generated circuit use:
 
