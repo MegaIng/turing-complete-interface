@@ -39,7 +39,7 @@ if __name__ == '__main__':
             base_stem = save_folder.stem
             while save_folder.exists():
                 i += 1
-                save_folder = save_folder.with_stem(f"{save_folder.stem}{i}")
+                save_folder = save_folder.with_stem(f"{base_stem}{i}")
         else:
             save_folder = SCHEMATICS_PATH / ns.save
 

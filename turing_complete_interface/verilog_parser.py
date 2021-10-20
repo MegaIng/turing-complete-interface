@@ -110,7 +110,7 @@ class Verilog2LogicNode(Interpreter):
     def sub_decl(self, component: Token, name: Token, ports):
         assert self.current_component is None
         self.current_id = name.value
-        d = component_mapping[component.value]
+        d = verilog_to_tc[component.value]
         self.current_pin_mapping = d["pins"]
         self.current_component = get_component(d["tc"], "")[1]
         self.nodes[name.value] = self.current_component
@@ -159,7 +159,8 @@ class Verilog2LogicNode(Interpreter):
         self.wires[target] = (self.wires[source][0], self.wires[target][1])
 
 
-component_mapping = json.load(Path(__file__).with_name("verilog_components.json").open())
+verilog_to_tc = json.load(Path(__file__).with_name("verilog_components.json").open())
+tc_to_verilog = {d["tc"]: v for v, d in verilog_to_tc.items()}
 
 
 def parse_verilog(text: str) -> CombinedLogicNode:

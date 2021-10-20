@@ -11,7 +11,7 @@ try:
     import nimporter
 except ImportError:
     print("Couldn't import nimporter. Assuming that save_monger is available anyway.")
-import save_monger
+from turing_complete_interface import save_monger
 
 
 def pre_parse(text: str) -> list[list[list[list[str]]]]:
