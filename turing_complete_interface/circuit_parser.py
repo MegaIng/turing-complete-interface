@@ -191,17 +191,19 @@ def get_path():
     match sys.platform:
         case "Windows" | "win32":
             base_path = Path(os.environ["APPDATA"], r"Godot\app_userdata\Turing Complete")
-        case "Darwin":
+        case "darwin":
             base_path = Path("~/Library/Application Support/Godot/app_userdata/Turing Complete").expanduser()
         case "Linux":
             base_path = Path("~/.local/share/godot/app_userdata/Turing Complete").expanduser()
         case _:
-            raise ValueError(f"Don't know where to find Turing Complete save on {sys.platform=}")
+            print(f"Don't know where to find Turing Complete save on {sys.platform=}")
+            return None
     if not base_path.exists():
-        raise ValueError("You need Turing Complete installed to use this.")
+        print("You need Turing Complete installed to use everything here")
+        return None
     return base_path
 
 
 BASE_PATH = get_path()
 
-SCHEMATICS_PATH = BASE_PATH / "schematics"
+SCHEMATICS_PATH = BASE_PATH / "schematics" if BASE_PATH is not None else None

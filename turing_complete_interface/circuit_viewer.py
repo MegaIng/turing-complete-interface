@@ -329,10 +329,10 @@ if __name__ == '__main__':
     arg_parser.add_argument("--fast-bot-turtle", action="store_true")
 
     ns = arg_parser.parse_args()
-    if ns.level is None:
+    if ns.level is None and SCHEMATICS_PATH is not None:
         options = [d.name for d in SCHEMATICS_PATH.iterdir() if d.is_dir()]
         ns.level = prompt("Enter level name> ", completer=FuzzyCompleter(WordCompleter(options, sentence=True)))
-    if ns.save is None:
+    if ns.save is None and SCHEMATICS_PATH is not None:
         options = [d.name for d in (SCHEMATICS_PATH / ns.level).iterdir() if d.is_dir()]
         ns.save = prompt("Enter save name> ", completer=FuzzyCompleter(WordCompleter(options, sentence=True)))
     if ns.assembly is None and ns.level == "architecture":

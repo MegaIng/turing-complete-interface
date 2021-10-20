@@ -326,7 +326,11 @@ spec_components = load_all_components(Path())
 std_components: dict[str, tuple[GateShape, LogicNodeType]]
 rev_components: dict[str, tuple[str, str]]
 std_components, rev_components = load_components()
-custom_components: dict[str, tuple[Circuit, GateShape | None, LogicNodeType | None]] = load_custom()
+custom_components: dict[str, tuple[Circuit, GateShape | None, LogicNodeType | None]]
+if SCHEMATICS_PATH is not None:
+    custom_components = load_custom()
+else:
+    custom_components = {}
 
 
 def get_component(gate_name: str, custom_data: str, no_node: bool = False) -> tuple[GateShape, LogicNodeType | None]:
