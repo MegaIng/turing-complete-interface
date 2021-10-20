@@ -322,7 +322,7 @@ def load_custom():
     return res
 
 
-spec_components = load_all_components(Path())
+spec_components = load_all_components(Path(__file__).parent / "components")
 std_components: dict[str, tuple[GateShape, LogicNodeType]]
 rev_components: dict[str, tuple[str, str]]
 std_components, rev_components = load_components()
