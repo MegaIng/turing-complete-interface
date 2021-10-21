@@ -157,7 +157,7 @@ def build_circuit(node: CombinedLogicNode, io_positions: list[IOPosition], space
         start = tuple(start)
         end = tuple(end)
         if not source_pin.is_byte and not target_pin.is_byte:
-            assert wire.source_bits == wire.target_bits == (0, 1)
+            assert wire.source_bits == wire.target_bits == (0, 1), wire
             wires.append(CircuitWire(len(wires) + 1, False, 0, "", [tuple(start), tuple(end)]))
         elif source_pin.is_byte and not target_pin.is_byte:
             assert wire.target_bits == (0, 1)

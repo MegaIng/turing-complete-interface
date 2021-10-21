@@ -56,7 +56,7 @@ def _build_wires(selected_bits: tuple[int, int], target: NodePin, target_bits: t
         assert wire_start < wire_end
         new_sections = []
         for sec_start, sec_end in sections:
-            if sec_start > wire_end or sec_end <= wire_start:
+            if sec_start >= wire_end or sec_end <= wire_start:
                 new_sections.append((sec_start, sec_end))
                 continue
             if wire_start > sec_start:
