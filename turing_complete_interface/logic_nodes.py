@@ -5,7 +5,7 @@ from collections import defaultdict
 from dataclasses import dataclass
 from functools import cached_property, reduce, cache
 from operator import or_
-from typing import Optional, Callable, Protocol, Literal, Any, Mapping
+from typing import Optional, Callable, Protocol, Literal, Any, Mapping, TypeAlias
 
 from bitarray import bitarray, frozenbitarray, bits2bytes
 from bitarray.util import int2ba, ba2int
@@ -78,10 +78,13 @@ class DirectLogicNodeType(LogicNodeType):
         return (self.func(inputs, state, delayed) + (None,))[:3]
 
 
+NodePin: TypeAlias = tuple[str | None, str]
+
+
 @dataclass(frozen=True)
 class Wire:
-    source: tuple[str | None, str]
-    target: tuple[str | None, str]
+    source: NodePin
+    target: NodePin
     source_bits: tuple[int, int] | None = None  # None means all
     target_bits: tuple[int, int] | None = None
 
@@ -128,6 +131,13 @@ class CombinedLogicNode(LogicNodeType):
     @cached_property
     def state_size(self):
         return sum(node.state_size for node in self.nodes.values())
+
+    @cached_property
+    def wires_by_source(self) -> frozendict[str | None, tuple[Wire, ...]]:
+        wires_by_source = defaultdict(list)
+        for wire in self.wires:
+            wires_by_source[wire.source[0]].append(wire)
+        return frozendict({n: tuple(ws) for n, ws in wires_by_source.items()})
 
     @cached_property
     def wires_by_target(self) -> frozendict[str | None, tuple[Wire, ...]]:

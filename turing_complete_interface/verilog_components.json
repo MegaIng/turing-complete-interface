@@ -17,11 +17,9 @@
     "tc": "BitMemory",
     "pins": {
       ".C": null,
+      ".E": "save",
       ".D": "in",
       ".Q": "out"
-    },
-    "fix": {
-      "save": 1
     }
   },
   "NAND": {
@@ -32,8 +30,32 @@
       ".Y": "out"
     }
   },
+  "AND": {
+    "tc": "And",
+    "pins": {
+      ".A": "a",
+      ".B": "b",
+      ".Y": "out"
+    }
+  },
   "NOR": {
     "tc": "Nor",
+    "pins": {
+      ".A": "a",
+      ".B": "b",
+      ".Y": "out"
+    }
+  },
+  "XOR": {
+    "tc": "Xor",
+    "pins": {
+      ".A": "a",
+      ".B": "b",
+      ".Y": "out"
+    }
+  },
+  "XNOR": {
+    "tc": "Xnor",
     "pins": {
       ".A": "a",
       ".B": "b",

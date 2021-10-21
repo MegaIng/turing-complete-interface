@@ -6,7 +6,7 @@ from typing import Any, Callable, Collection
 from bitarray import bitarray
 
 from turing_complete_interface.circuit_parser import Circuit, GateReference, GateShape, CircuitWire, CircuitPin
-from turing_complete_interface.logic_nodes import CombinedLogicNode
+from turing_complete_interface.logic_nodes import CombinedLogicNode, NodePin
 from turing_complete_interface.tc_components import get_component, rev_components
 
 
@@ -43,12 +43,14 @@ class IOPosition:
                                   {name: "value"}, custom_data=name))
         return ios
 
+
 @dataclass
 class Space:
     x: int
     y: int
     w: int
     h: int
+    _observer: Any = None
     _placed_boxes: list[tuple[int, int, int, int]] = field(default_factory=list)
     _protected: set[Any] = field(default_factory=set)
     _taken_spaces: bitarray = None
@@ -62,13 +64,15 @@ class Space:
         if force_pos is None:
             for idx in self._taken_spaces.itersearch(bitarray([0] * w)):
                 y, x = divmod(idx, self.w)
+                if x + w > self.w:
+                    continue
                 if hasher is not None and hasher((x + self.x, y + self.y)) in self._protected:
                     continue
                 for k in range(h):
-                    if idx + k * self.w + w >= self.h:
-                        continue
+                    if idx + k * self.w + w >= self.h * self.w:
+                        break
                     if self._taken_spaces[idx + k * self.w:idx + k * self.w + w].any():
-                        continue
+                        break
                 else:
                     break
             else:
@@ -82,7 +86,12 @@ class Space:
             self._taken_spaces[idx + k * self.w:idx + k * self.w + w] = 1
         if hasher is not None:
             self._protected.add(hasher((x + self.x, y + self.y)))
+        if self._observer is not None:
+            self._observer(self)
         return x + self.x, y + self.y
+
+    def is_filled(self, x: int, y: int):
+        return self._taken_spaces[(y-self.y) * self.w + (x-self.x)]
 
 
 def build_circuit(node: CombinedLogicNode, io_positions: list[IOPosition], space: Space,
@@ -110,7 +119,7 @@ def build_circuit(node: CombinedLogicNode, io_positions: list[IOPosition], space
         return t - ox, l - oy
 
     gate_refs = []
-    pin_locations: dict[tuple[str | None, str], tuple[CircuitPin, int, int]] = {}
+    pin_locations: dict[NodePin, tuple[CircuitPin, int, int]] = {}
     for io in io_positions:
         shape, _ = get_component(io.component_name, io.custom_data)
         pos = place(shape, True, io.force_position)
@@ -138,9 +147,40 @@ def build_circuit(node: CombinedLogicNode, io_positions: list[IOPosition], space
 
     wires = []
 
+    splitters = {}
+    makers = {}
+    bs_shape = get_component("ByteSplitter", "")[0]
+    bm_shape = get_component("ByteMaker", "")[0]
     for wire in node.wires:
-        assert wire.source_bits == wire.target_bits, wire
-        pin, *start = pin_locations[wire.source]
-        _, *end = pin_locations[wire.target]
-        wires.append(CircuitWire(len(wires) + 1, pin.is_byte, 0, "", (tuple(start), tuple(end))))
+        source_pin, *start = pin_locations[wire.source]
+        target_pin, *end = pin_locations[wire.target]
+        start = tuple(start)
+        end = tuple(end)
+        if not source_pin.is_byte and not target_pin.is_byte:
+            assert wire.source_bits == wire.target_bits == (0, 1)
+            wires.append(CircuitWire(len(wires) + 1, False, 0, "", [tuple(start), tuple(end)]))
+        elif source_pin.is_byte and not target_pin.is_byte:
+            assert wire.target_bits == (0, 1)
+            if start not in splitters:
+                pos = place(bs_shape)
+                splitter = splitters[start] = GateReference("ByteSplitter", pos, 0, str(get_id()), "")
+                gate_refs.append(splitter)
+                wires.append(CircuitWire(get_id(), True, 0, "", [start, bs_shape.pin_position(splitter, "in")]))
+            else:
+                splitter = splitters[start]
+            wires.append(CircuitWire(get_id(), False, 0, "",
+                                     [bs_shape.pin_position(splitter, f"r{wire.source_bits[0]}"), end]))
+        elif not source_pin.is_byte and target_pin.is_byte:
+            assert wire.source_bits == (0, 1)
+            if end not in makers:
+                pos = place(bm_shape)
+                maker = makers[end] = GateReference("ByteMaker", pos, 0, str(get_id()), "")
+                gate_refs.append(maker)
+                wires.append(CircuitWire(get_id(), True, 0, "", [bm_shape.pin_position(maker, "out"), end]))
+            else:
+                maker = makers[end]
+            wires.append(CircuitWire(get_id(), False, 0, "",
+                                     [start, bm_shape.pin_position(maker, f"r{wire.target_bits[0]}")]))
+        else:
+            assert False, wire
     return Circuit(gate_refs, wires, 99_999, 99_999, level_version)

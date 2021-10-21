@@ -156,11 +156,18 @@ def translate(p):
 
 
 def load_circuit(ns) -> tuple[Circuit, LogicNodeType, Space]:
+    if ns.observe:
+        view = WorldView(pg.display.set_mode((600, 600)))
+
+        def observer(s):
+            return _space_observer(view, s)
+    else:
+        observer = None
     if ns.level is not None:
         level_spaces = json.load(Path(__file__).with_name("level_spaces.json").open())
-        space = Space(*level_spaces.get(ns.level, [-50, -50, 100, 100]))
+        space = Space(*level_spaces.get(ns.level, [-50, -50, 100, 100]), observer)
     else:
-        space = Space(-50, -50, 100, 100)
+        space = Space(-50, -50, 100, 100, observer)
     if ns.verilog is not None:
         node = parse_verilog(ns.verilog.read_text())
         circuit = build_circuit(node, IOPosition.from_node(node), space)
@@ -174,6 +181,35 @@ def load_circuit(ns) -> tuple[Circuit, LogicNodeType, Space]:
             tc_components.program.frombytes(assembled)
         node = build_gate(save_name, circuit)
     return circuit, node, space
+
+
+def _space_observer(view: WorldView, space: Space):
+    running = True
+    Event = pg.event.EventType
+    while running:
+        for event in pg.event.get():
+            match event:
+                case Event(type=pg.QUIT):
+                    exit()
+                case e if view.handle_event(e):
+                    continue
+                case Event(type=pg.KEYDOWN, key=pg.K_SPACE):
+                    return
+        view.update(1)
+        view.screen.fill((127, 127, 127))
+        for x in range(space.x, space.x + space.w):
+            for y in range(space.y, space.y + space.h):
+                r = (x - 0.5, y - 0.5, 1.1, 1.1)
+                k = translate((x, y))
+                if space.is_filled(x, y):
+                    view.draw.rect((0, 0, 0), r)
+                elif (k[0] + k[1]) % 2 == 1:
+                    view.draw.rect((65, 65, 65), r)
+                else:
+                    view.draw.rect((127, 127, 127), r)
+        for r in space._placed_boxes:
+            view.draw.rect((255, 0, 0), (r[0] + space.x - 0.5, r[1] + space.y - 0.5, r[2], r[3]), 1)
+        pg.display.update()
 
 
 def view_circuit(circuit, node, space, output_handler: Callable[[pg.Surface], WorldHandler] = None):
@@ -327,6 +363,7 @@ if __name__ == '__main__':
     arg_parser.add_argument("-a", "--assembly", action="store")
     arg_parser.add_argument("-v", "--verilog", action="store", type=Path)
     arg_parser.add_argument("--fast-bot-turtle", action="store_true")
+    arg_parser.add_argument("--observe", action="store_true")
 
     ns = arg_parser.parse_args()
     if ns.level is None and SCHEMATICS_PATH is not None:

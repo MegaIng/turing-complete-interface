@@ -181,6 +181,10 @@ class GateShape:
         assert all((isfinite(min_x), isfinite(max_x), isfinite(min_y), isfinite(max_y))), (min_x, max_x, min_y, max_y)
         return min_x, min_y, max_x - min_x + 1, max_y - min_y + 1
 
+    def pin_position(self, gate_ref: GateReference, pin_name: str):
+        p = self.pins[pin_name]
+        return gate_ref.pos[0] + p.pos[0], gate_ref.pos[1] + p.pos[1]
+
 
 SPECIAL = (206, 89, 107)
 NORMAL = (28, 95, 147)
