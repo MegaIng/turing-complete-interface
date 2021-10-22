@@ -11,7 +11,7 @@ from .circuit_parser import GateShape, GateReference, SPECIAL, NORMAL, CircuitPi
     Circuit
 from .logic_nodes import LogicNodeType, DirectLogicNodeType, InputPin, OutputPin, build_or as ln_build_or, \
     builtins_gates, CombinedLogicNode, Wire
-from .specification_parser import load_all_components
+from .specification_parser import load_all_components, spec_components
 
 
 def ram_func(args, state: frozenbitarray, delayed):
@@ -41,7 +41,6 @@ def build_rom(shape: GateShape, data):
             name: program[(address + i) % 256 * 8:(address + i) % 256 * 8 + 8]
             for i, name in enumerate(out_names)
         })
-        print(args, address, len(program), ret)
         return ret, state
 
     out_names = [name for name, p in shape.pins.items() if not p.is_input]
@@ -316,13 +315,16 @@ def compute_gate_shape(circuit, name: str) -> GateShape:
 def load_custom():
     res = {}
     for path in Path(SCHEMATICS_PATH / "component_factory").iterdir():
-        circuit = Circuit.parse((path / "circuit.data").read_text())
-        # Don't compile immediately. Wait if we are asked
-        res[path.name] = circuit, None, None
+        try:
+            circuit = Circuit.parse((path / "circuit.data").read_text())
+            # Don't compile immediately. Wait if we are asked
+            res[path.name] = circuit, None, None
+        except Exception as e:
+            print(type(e), e)
     return res
 
 
-spec_components = load_all_components(Path(__file__).parent / "components")
+
 std_components: dict[str, tuple[GateShape, LogicNodeType]]
 rev_components: dict[str, tuple[str, str]]
 std_components, rev_components = load_components()

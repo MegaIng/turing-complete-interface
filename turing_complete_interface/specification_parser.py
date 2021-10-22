@@ -107,8 +107,8 @@ def load_all_components(base_path: Path) -> dict[str, LogicNodeType]:
     for spec in base_path.rglob("*.spec"):
         try:
             tree = parser.parse(spec.read_text("utf-8"))
-        except lark.LarkError:
-            print(f"Can't parse {spec}")
+        except lark.LarkError as e:
+            print(f"Can't parse {spec}", e)
             continue
         name = name_query.execute(tree)
         parsed[name] = tree
@@ -129,3 +129,6 @@ def load_all_components(base_path: Path) -> dict[str, LogicNodeType]:
             compiled[name] = builder.transform(tree)
             sorter.done(name)
     return compiled
+
+
+spec_components = load_all_components(Path(__file__).parent / "components")

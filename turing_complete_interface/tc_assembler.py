@@ -33,7 +33,6 @@ def assemble(save_path: Path, assembly_file: Path) -> bytes:
     tree = assembler_parser.parse(raw)
     i = 0
     for line in tree.children:
-        print(i, line)
         if line.data == "label_def":
             mapping[line.children[0].value] = i
         elif line.data == "line":

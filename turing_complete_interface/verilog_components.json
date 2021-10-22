@@ -20,7 +20,8 @@
       ".E": "save",
       ".D": "in",
       ".Q": "out"
-    }
+    },
+    "clk": ".C"
   },
   "NAND": {
     "tc": "Nand",

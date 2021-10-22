@@ -1,4 +1,5 @@
 import json
+from dataclasses import dataclass
 from pathlib import Path
 from typing import Iterable
 
@@ -206,7 +207,6 @@ class Verilog2LogicNode(Interpreter):
 
 
 verilog_to_tc = json.load(Path(__file__).with_name("verilog_components.json").open())
-tc_to_verilog = {d["tc"]: v for v, d in verilog_to_tc.items()}
 
 
 def parse_verilog(text: str) -> CombinedLogicNode:
