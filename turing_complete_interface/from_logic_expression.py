@@ -74,7 +74,7 @@ class BuildNode(Interpreter):
     def _add_node(self, component: LogicNodeType, *args):
         self.nodes[i := str(len(self.nodes) + 1)] = component
         for pin, target in zip(component.inputs, args, strict=True):
-            self.wires.append(Wire((i, pin), target, (0, 1), (0, 1)))
+            self.wires.append(Wire(target, (i, pin), (0, 1), (0, 1)))
         return i, next(iter(component.outputs))
 
     def _buffer(self, source):
@@ -114,14 +114,17 @@ class BuildNode(Interpreter):
             self.inputs[name.value] = InputPin(1)
         return (None, name.value)
 
+    def _not(self, base):
+        if base not in self.not_cache:
+            self.not_cache[base] = self._add_node(spec_components["NOT_1W1"], base)
+            self.not_cache[self.not_cache[base]] = base  # A'' = A
+        return self.not_cache[base]
+
     @v_args(inline=True)
     def pre_negation(self, op, base):
         base = self.visit(base)
         if op in NOT_OPERATORS:
-            if base not in self.not_cache:
-                self.not_cache[base] = self._add_node(spec_components["NOT_1W1"], base)
-                self.not_cache[self.not_cache[base]] = base  # A'' = A
-            return self.not_cache[base]
+            return self._not(base)
         else:
             raise ValueError(op)
 
@@ -129,9 +132,7 @@ class BuildNode(Interpreter):
     def post_negation(self, base, op):
         base = self.visit(base)
         if op in NOT_OPERATORS:
-            if base not in self.not_cache:
-                self.not_cache[base] = self._add_node(spec_components["NOT_1W1"], base)
-            return self.not_cache[base]
+            return self._not(base)
         else:
             raise ValueError(op)
 

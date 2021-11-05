@@ -1,13 +1,18 @@
 from __future__ import annotations
 
+import json
 from dataclasses import dataclass, field
-from typing import Any, Callable, Collection
+from pprint import pprint
+from typing import Any, Callable, Collection, TYPE_CHECKING
 
 from bitarray import bitarray
 
 from turing_complete_interface.circuit_parser import Circuit, GateReference, GateShape, CircuitWire, CircuitPin
 from turing_complete_interface.logic_nodes import CombinedLogicNode, NodePin
 from turing_complete_interface.tc_components import get_component, rev_components
+
+if TYPE_CHECKING:
+    import pydot
 
 
 @dataclass
@@ -91,7 +96,7 @@ class Space:
         return x + self.x, y + self.y
 
     def is_filled(self, x: int, y: int):
-        return self._taken_spaces[(y-self.y) * self.w + (x-self.x)]
+        return self._taken_spaces[(y - self.y) * self.w + (x - self.x)]
 
 
 def build_circuit(node: CombinedLogicNode, io_positions: list[IOPosition], space: Space,
@@ -184,3 +189,90 @@ def build_circuit(node: CombinedLogicNode, io_positions: list[IOPosition], space
         else:
             assert False, wire
     return Circuit(gate_refs, wires, 99_999, 99_999, level_version)
+
+
+def to_pydot(node: CombinedLogicNode, io_positions: list[IOPosition], space: Space) -> \
+        tuple[dict[str, tuple[str, IOPosition]], "pydot.Dot"]:
+    import pydot
+
+    g = pydot.Dot(graph_type="digraph", rankdir="LR", nodesep=1, ranksep=5, splines="ortho")
+
+    for name, ln in node.nodes.items():
+        component_name, custom_data = rev_components[ln.name]
+        shape, inner_node = get_component(component_name, custom_data, no_node=True)
+        g.add_node(pydot.Node(name, fixedsize=True, shape="box",
+                              width=shape.bounding_box[2], height=shape.bounding_box[3],
+                              label=f"{component_name}[{name}]"))
+    io_nodes = {}
+    for io in io_positions:
+        shape, _ = get_component(io.component_name, io.custom_data)
+        name = "".join(io.pin_mapping)
+        for p in io.pin_mapping:
+            io_nodes[p] = name, io
+        g.add_node(pydot.Node(name, fixedsize=True, shape="box",
+                              width=7, height=7,
+                              label=f"{io.component_name}[{name}]"))
+
+    for wire in node.wires:
+        if wire.source[0] is None:
+            source = io_nodes[wire.source[1]][0]
+        else:
+            source = wire.source[0]
+        if wire.target[0] is None:
+            target = io_nodes[wire.target[1]][0]
+        else:
+            target = wire.target[0]
+        g.add_edge(pydot.Edge(source, target, tailport="e", headport="w", ))
+    return io_nodes, g
+
+
+def layout_with_pydot(node: CombinedLogicNode, io_positions: list[IOPosition], space: Space) -> Circuit:
+    i = 1
+    taken_ids = set()
+
+    def get_id() -> int:
+        nonlocal i
+        while i in taken_ids:
+            i += 1
+        taken_ids.add(i)
+        return i
+
+    pin_to_io, graph = to_pydot(node, io_positions, space)
+    graph.write_svg("test.svg")
+    data = json.loads(graph.create(format='json0'))
+    pprint(data)
+    del graph
+    ionames = {name: io for name, io in pin_to_io.values()}
+    gate_refs = []
+    pin_locations = {}
+
+    for obj in data["objects"]:
+        name, pos = obj['name'], obj['pos']
+        pos = pos.split(',')
+        pos = int(pos[0])//72+space.x, int(pos[1])//72+space.y
+        if name in ionames:
+            io: IOPosition = ionames[name]
+            if io.force_id is not None:
+                gid = int(io.force_id)
+                taken_ids.add(gid)
+            else:
+                gid = get_id()
+
+            gate_refs.append(GateReference(io.component_name, pos, 0, str(gid), io.custom_data))
+            shape, _ = get_component(io.component_name, io.custom_data, True)
+
+            for node_pin_name, shape_pin_name in io.pin_mapping.items():
+                dp = shape.pins[shape_pin_name].pos
+                pin_locations[None, node_pin_name] = shape.pins[shape_pin_name], pos[0] + dp[0], pos[1] + dp[1]
+        else:
+            n = node.nodes[name]
+            component_name, custom_data = rev_components[n.name]
+            shape, inner_node = get_component(component_name, custom_data, no_node=True)
+            gi = get_id()
+
+            gate_refs.append(GateReference(component_name, pos, 0, str(gi), custom_data))
+
+            for node_pin_name, pin in shape.pins.items():
+                dp = pin.pos
+                pin_locations[name, node_pin_name] = pin, pos[0] + dp[0], pos[1] + dp[1]
+    return Circuit(gate_refs, [], 99_999, 99_999, 0)

@@ -1,6 +1,6 @@
 from typing import Literal
 
-from turing_complete_interface.circuit_builder import build_circuit, IOPosition
+from turing_complete_interface.circuit_builder import build_circuit, IOPosition, layout_with_pydot
 from turing_complete_interface.circuit_parser import Circuit, SCHEMATICS_PATH
 from turing_complete_interface.from_logic_expression import from_logic_expression
 from turing_complete_interface.level_layouts import LevelLayout
@@ -46,7 +46,11 @@ def verilog_to_node(verilog: str, module_name: _NameSources | str = USE_MODULE_N
 
 
 def node_to_circuit(node: LogicNodeType) -> Circuit:
-    return build_circuit(node, level_layout.fixed_io or IOPosition.from_node(node),level_layout.new_space() )
+    return build_circuit(node, level_layout.fixed_io or IOPosition.from_node(node), level_layout.new_space())
+
+
+def node_to_circuit_pydot(node: LogicNodeType) -> Circuit:
+    return layout_with_pydot(node, level_layout.fixed_io or IOPosition.from_node(node), level_layout.new_space())
 
 
 def save_custom_component(circuit: Circuit, name: str):
@@ -57,4 +61,4 @@ def save_level(circuit: Circuit, level_name: str, save_name: str):
     s = circuit.to_string()
     path = (SCHEMATICS_PATH / level_name / save_name)
     path.mkdir(exist_ok=True, parents=True)
-    (path/"circuit.data").write_text(s)
+    (path / "circuit.data").write_text(s)
