@@ -249,7 +249,7 @@ def layout_with_pydot(node: CombinedLogicNode, io_positions: list[IOPosition], s
     for obj in data["objects"]:
         name, pos = obj['name'], obj['pos']
         pos = pos.split(',')
-        pos = int(pos[0])//72+space.x, int(pos[1])//72+space.y
+        pos = int(pos[0]) // 72 + space.x, int(pos[1]) // 72 + space.y
         if name in ionames:
             io: IOPosition = ionames[name]
             if io.force_id is not None:
@@ -257,7 +257,7 @@ def layout_with_pydot(node: CombinedLogicNode, io_positions: list[IOPosition], s
                 taken_ids.add(gid)
             else:
                 gid = get_id()
-
+            component_name, custom_data = io.component_name, io.custom_data
             gate_refs.append(GateReference(io.component_name, pos, 0, str(gid), io.custom_data))
             shape, _ = get_component(io.component_name, io.custom_data, True)
 
@@ -268,11 +268,53 @@ def layout_with_pydot(node: CombinedLogicNode, io_positions: list[IOPosition], s
             n = node.nodes[name]
             component_name, custom_data = rev_components[n.name]
             shape, inner_node = get_component(component_name, custom_data, no_node=True)
-            gi = get_id()
-
-            gate_refs.append(GateReference(component_name, pos, 0, str(gi), custom_data))
-
+            gid = get_id()
             for node_pin_name, pin in shape.pins.items():
                 dp = pin.pos
                 pin_locations[name, node_pin_name] = pin, pos[0] + dp[0], pos[1] + dp[1]
-    return Circuit(gate_refs, [], 99_999, 99_999, 0)
+
+        space.place(shape.bounding_box[2], shape.bounding_box[3], (pos[0] - space.x, pos[1] - space.y))
+        gate_refs.append(GateReference(component_name, pos, 0, str(gid), custom_data))
+
+    wires = []
+
+    splitters = {}
+    makers = {}
+    bs_shape = get_component("ByteSplitter", "")[0]
+    bm_shape = get_component("ByteMaker", "")[0]
+    for wire in node.wires:
+        source_pin, *start = pin_locations[wire.source]
+        target_pin, *end = pin_locations[wire.target]
+        start = tuple(start)
+        end = tuple(end)
+        if not source_pin.is_byte and not target_pin.is_byte:
+            assert wire.source_bits == wire.target_bits == (0, 1), wire
+            wires.append(CircuitWire(len(wires) + 1, False, 0, "", [tuple(start), tuple(end)]))
+        elif source_pin.is_byte and not target_pin.is_byte:
+            assert wire.target_bits == (0, 1)
+            if start not in splitters:
+                t, l = space.place(bm_shape.bounding_box[2], bm_shape.bounding_box[3])
+                pos = t - bm_shape.bounding_box[0], l - bm_shape.bounding_box[1]
+                splitter = splitters[start] = GateReference("ByteSplitter", pos, 0, str(get_id()), "")
+                gate_refs.append(splitter)
+                wires.append(CircuitWire(get_id(), True, 0, "", [start, bs_shape.pin_position(splitter, "in")]))
+            else:
+                splitter = splitters[start]
+            wires.append(CircuitWire(get_id(), False, 0, "",
+                                     [bs_shape.pin_position(splitter, f"r{wire.source_bits[0]}"), end]))
+        elif not source_pin.is_byte and target_pin.is_byte:
+            assert wire.source_bits == (0, 1)
+            if end not in makers:
+                t, l = space.place(bm_shape.bounding_box[2], bm_shape.bounding_box[3])
+                pos = t - bm_shape.bounding_box[0], l - bm_shape.bounding_box[1]
+                maker = makers[end] = GateReference("ByteMaker", pos, 0, str(get_id()), "")
+                gate_refs.append(maker)
+                wires.append(CircuitWire(get_id(), True, 0, "", [bm_shape.pin_position(maker, "out"), end]))
+            else:
+                maker = makers[end]
+            wires.append(CircuitWire(get_id(), False, 0, "",
+                                     [start, bm_shape.pin_position(maker, f"r{wire.target_bits[0]}")]))
+        else:
+            assert False, wire
+
+    return Circuit(gate_refs, wires, 99_999, 99_999, 0)
