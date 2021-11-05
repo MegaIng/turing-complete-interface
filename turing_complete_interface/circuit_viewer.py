@@ -1,4 +1,5 @@
 import json
+import os
 from abc import ABC
 from argparse import ArgumentParser
 from graphlib import CycleError
@@ -11,6 +12,7 @@ from bitarray import bitarray
 import tkinter as tk
 
 from turing_complete_interface.circuit_builder import build_circuit, IOPosition, Space
+from turing_complete_interface.level_layouts import get_layout
 from turing_complete_interface.tc_assembler import assemble
 from turing_complete_interface.verilog_parser import parse_verilog
 from .circuit_compiler import build_connections, build_gate
@@ -163,11 +165,7 @@ def load_circuit(ns) -> tuple[Circuit, LogicNodeType, Space]:
             return _space_observer(view, s)
     else:
         observer = None
-    if ns.level is not None:
-        level_spaces = json.load(Path(__file__).with_name("level_spaces.json").open())
-        space = Space(*level_spaces.get(ns.level, [-50, -50, 100, 100]), observer)
-    else:
-        space = Space(-50, -50, 100, 100, observer)
+    space = get_layout(ns.level).new_space(_observer=observer)
     if ns.verilog is not None:
         node = parse_verilog(ns.verilog.read_text())
         circuit = build_circuit(node, IOPosition.from_node(node), space)
@@ -213,8 +211,28 @@ def _space_observer(view: WorldView, space: Space):
 
 
 def view_circuit(circuit, node, space, output_handler: Callable[[pg.Surface], WorldHandler] = None):
-    pg.init()
+    current_state = node.create_state()
+
+    root = tk.Tk()
+    bit_widgets: dict[str, BitsInput] = {}
+    i = 0
+    for name, pin in node.inputs.items():
+        w = bit_widgets[name] = BitsInput(root, name, pin.bits, delayed=pin.delayed)
+        w.grid(column=0, row=i)
+        i += 1
+    for name, pin in node.outputs.items():
+        w = bit_widgets[name] = BitsInput(root, name, pin.bits, locked=True)
+        w.grid(column=0, row=i)
+        i += 1
+
     W, H = 640, 480
+    sdl_frame = tk.Frame(root, width=W, height=H)
+    sdl_frame.grid(column=1, row=0, rowspan=i)
+    root.update()
+    os.environ["SDL_WINDOWID"] = str(sdl_frame.winfo_id())
+    wire_values = {}
+
+    pg.init()
     FLAGS = pg.RESIZABLE
     FONT_SIZE = 30
 
@@ -224,19 +242,6 @@ def view_circuit(circuit, node, space, output_handler: Callable[[pg.Surface], Wo
     font = pg.font.Font("turing_complete_interface/Px437_IBM_BIOS.ttf", FONT_SIZE)
     W, H = screen.get_size()
     view = WorldView.centered(screen, scale_x=40)
-
-    current_state = node.create_state()
-
-    root = tk.Tk()
-    bit_widgets: dict[str, BitsInput] = {}
-    for name, pin in node.inputs.items():
-        w = bit_widgets[name] = BitsInput(root, name, pin.bits, delayed=pin.delayed)
-        w.pack()
-    for name, pin in node.outputs.items():
-        w = bit_widgets[name] = BitsInput(root, name, pin.bits, locked=True)
-        w.pack()
-
-    wire_values = {}
 
     cycle = None
     pg.key.set_repeat(100, 50)

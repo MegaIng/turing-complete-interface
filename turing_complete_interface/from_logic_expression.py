@@ -47,21 +47,23 @@ class BuildNode(Interpreter):
     wires: list[Wire] = field(default_factory=list)
 
     def start(self, base):
-        self.visit(base)
+        result = self.visit(base)
+        self.outputs["Q"] = OutputPin(1)
+        self.wires.append(Wire(result, (None, "Q"), (0, 1), (0, 1)))
         return CombinedLogicNode(self.name, frozendict(self.nodes), frozendict(self.inputs), frozendict(self.outputs),
                                  tuple(self.wires))
 
     def _add_node(self, component: LogicNodeType, *args):
         self.nodes[i := str(len(self.nodes) + 1)] = component
         for pin, target in zip(component.inputs, args, strict=True):
-            self.wires.append(Wire((i, pin), target))
+            self.wires.append(Wire((i, pin), target, (0, 1), (0, 1)))
         return i, next(iter(component.outputs))
 
     def disjunction(self, a, op, b):
         a = self.visit(a)
         b = self.visit(b)
         if op.value in OR_OPERATORS:
-            self._add_node(spec_components["OR_2W1"], a, b)
+            return self._add_node(spec_components["OR_2W1"], a, b)
         elif op.value in NOR_OPERATORS:
             return self._add_node(spec_components["NOR_2W1"], a, b)
         else:
@@ -71,14 +73,14 @@ class BuildNode(Interpreter):
         a = self.visit(a)
         b = self.visit(b)
         if op is None or op.value in AND_OPERATORS:
-            self._add_node(spec_components["AND_2W1"], a, b)
+            return self._add_node(spec_components["AND_2W1"], a, b)
         elif op.value in NAND_OPERATORS:
             return self._add_node(spec_components["NAND_2W1"], a, b)
         else:
             raise ValueError(op)
 
     def input(self, name: Token):
-        if name in self.inputs:
+        if name not in self.inputs:
             self.inputs[name.value] = InputPin(1)
         return (None, name.value)
 
@@ -103,4 +105,3 @@ class BuildNode(Interpreter):
 def from_logic_expression(name: str, text: str) -> CombinedLogicNode:
     tree = parser.parse(text)
     return BuildNode(name).visit(tree)
-

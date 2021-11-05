@@ -1,0 +1,56 @@
+{
+  "architecture": {
+    "size": [
+      -63,
+      -63,
+      128,
+      128
+    ],
+    "IO": [
+      {
+        "id": "2",
+        "type": "Output1_1B",
+        "pins": {
+          "out": "value",
+          "out_enable": "control"
+        }
+      },
+      {
+        "id": "3",
+        "type": "Input1_1B",
+        "pins": {
+          "in": "value",
+          "in_enable": "control"
+        }
+      }
+    ]
+  },
+  "component_factory": {
+    "inputs": null
+  },
+  "byte_less_i": {
+    "IO": [
+      {
+        "id": "1",
+        "type": "Input1B",
+        "pins": {
+          "A": "value"
+        }
+      },
+      {
+        "id": "2",
+        "type": "Input1B",
+        "pins": {
+          "B": "value"
+        }
+      },
+      {
+        "id": "3",
+        "type": "Output1",
+        "pins": {
+          "R": "value"
+        }
+      }
+    ]
+  }
+}

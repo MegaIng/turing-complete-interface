@@ -3,6 +3,7 @@ from pathlib import Path
 
 from turing_complete_interface.circuit_builder import build_circuit, IOPosition, Space
 from turing_complete_interface.circuit_parser import SCHEMATICS_PATH
+from turing_complete_interface.level_layouts import get_layout
 from turing_complete_interface.verilog_parser import parse_verilog
 
 if __name__ == '__main__':
@@ -21,11 +22,7 @@ if __name__ == '__main__':
 
     if ns.spec:
         print(node.to_spec())
-    if ns.level is not None:
-        level_spaces = json.load(Path(__file__).with_name("level_spaces.json").open())
-        space = Space(*level_spaces.get(ns.level, [-50, -50, 100, 100]))
-    else:
-        space = Space(-50, -50, 100, 100)
+    space = get_layout(ns.level).new_space()
 
     circuit = build_circuit(node, IOPosition.from_node(node), space)
 
@@ -41,7 +38,7 @@ if __name__ == '__main__':
                 i += 1
                 save_folder = save_folder.with_stem(f"{base_stem}{i}")
         else:
-            save_folder = SCHEMATICS_PATH / ns.save
+            save_folder = level / ns.save
 
         save_folder.mkdir(parents=True, exist_ok=True)
         save = save_folder / "circuit.data"
