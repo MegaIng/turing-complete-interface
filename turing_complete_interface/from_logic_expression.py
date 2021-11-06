@@ -6,27 +6,31 @@ from typing import Dict, Any
 from itertools import zip_longest
 
 from frozendict import frozendict
-from lark import Lark, v_args, Token
+from lark import Lark, v_args, Token, Visitor
 from lark.visitors import Interpreter, visit_children_decor
 
 from turing_complete_interface.logic_nodes import LogicNodeType, CombinedLogicNode, OutputPin, InputPin, Wire, NodePin
 from turing_complete_interface.specification_parser import spec_components
 
 parser = Lark(r"""
-start: disjunction
+start: assignment+ | lone_expression
+lone_expression: disjunction
+assignment: "!" NAME "=" disjunction -> out_assignment
+          | NAME "=" disjunction
 ?disjunction: (conjunction DISJUNCTION)* conjunction
-?conjunction: (maybe_pre_negation [CONJUNCTION])* maybe_pre_negation
+?conjunction: (maybe_pre_negation CONJUNCTION)* maybe_pre_negation
 ?maybe_pre_negation: PRE_NEGATION maybe_pre_negation -> pre_negation 
                    | maybe_post_negation
 ?maybe_post_negation: maybe_post_negation POST_NEGATION -> post_negation
                     | atom
-?atom: /\w+/ -> input
+?atom: NAME -> ref
      | "(" disjunction ")"
 
 DISJUNCTION: "∨" | "+" | "∥" | "|" | "||" | "⊕" | "⊻" | "≢" | "⊽"
 CONJUNCTION: "∧" | "·" | "&" | "&&" | "⊼"
 PRE_NEGATION: "¬" | "˜" | "!" | "~"
 POST_NEGATION: "'"
+NAME: /\w+/
 %ignore /\s+/
 """, parser="lalr")
 
@@ -55,6 +59,25 @@ def grouper(iterable, n, fillvalue=None):
 
 
 @dataclass
+class _CollectNames(Visitor):
+    used_names: set[str] = field(default_factory=set)
+    assigned_names: set[str] = field(default_factory=set)
+    explicit_export_names: set[str] = field(default_factory=set)
+
+    def ref(self, tree):
+        self.used_names.add(tree.children[0].value)
+
+    def out_assignment(self, tree):
+        name = tree.children[0].value
+        self.assigned_names.add(name)
+        self.explicit_export_names.add(name)
+
+    def assignment(self, tree):
+        name = tree.children[0].value
+        self.assigned_names.add(name)
+
+
+@dataclass
 class BuildNode(Interpreter):
     name: str
     nodes: dict[str, LogicNodeType] = field(default_factory=dict)
@@ -63,11 +86,16 @@ class BuildNode(Interpreter):
     not_cache: dict[NodePin, NodePin] = field(default_factory=dict)
     wires: list[Wire] = field(default_factory=list)
 
-    @v_args(inline=True)
-    def start(self, base):
-        result = self.visit(base)
-        self.outputs["Q"] = OutputPin(1)
-        self.wires.append(Wire(result, (None, "Q"), (0, 1), (0, 1)))
+    # Contain wires which require missing information, e.g. the start of a temporary wire for example.
+    # half_wires: list[]
+
+    def start(self, tree):
+        cn = _CollectNames()
+        cn.visit(tree)
+        assert len(cn.used_names & cn.assigned_names) == 0, "Can't deal with temporary variables right now"
+        self.inputs = {name: InputPin(1) for name in cn.used_names - cn.assigned_names}
+        self.outputs = {name: OutputPin(1) for name in ((cn.assigned_names - cn.used_names) | cn.explicit_export_names)}
+        self.visit_children(tree)
         return CombinedLogicNode(self.name, frozendict(self.nodes), frozendict(self.inputs), frozendict(self.outputs),
                                  tuple(self.wires))
 
@@ -109,9 +137,14 @@ class BuildNode(Interpreter):
     conjunction = disjunction = _infix
 
     @v_args(inline=True)
-    def input(self, name: Token):
-        if name not in self.inputs:
-            self.inputs[name.value] = InputPin(1)
+    def assignment(self, name: Token, expression):
+        expression = self.visit(expression)
+        assert name.value in self.outputs
+        self.wires.append(Wire(expression, (None, name.value), (0,1),(0,1)))
+
+    @v_args(inline=True)
+    def ref(self, name: Token):
+        assert name in self.inputs
         return (None, name.value)
 
     def _not(self, base):
