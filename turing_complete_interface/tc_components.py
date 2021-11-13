@@ -316,7 +316,7 @@ def load_custom():
     res = {}
     for path in Path(SCHEMATICS_PATH / "component_factory").iterdir():
         try:
-            circuit = Circuit.parse((path / "circuit.data").read_text())
+            circuit = Circuit.parse((path / "circuit.data").read_bytes())
             # Don't compile immediately. Wait if we are asked
             res[path.name] = circuit, None, None
         except Exception as e:

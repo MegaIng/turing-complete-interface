@@ -3,6 +3,7 @@ from typing import Literal
 from turing_complete_interface.circuit_builder import build_circuit, IOPosition, layout_with_pydot
 from turing_complete_interface.circuit_parser import Circuit, SCHEMATICS_PATH
 from turing_complete_interface.from_logic_expression import from_logic_expression
+from turing_complete_interface.from_truth_table import TruthTable, PoS, SoP
 from turing_complete_interface.level_layouts import LevelLayout
 from turing_complete_interface.logic_nodes import LogicNodeType
 from turing_complete_interface.verilog_parser import parse_verilog
@@ -58,7 +59,23 @@ def save_custom_component(circuit: Circuit, name: str):
 
 
 def save_level(circuit: Circuit, level_name: str, save_name: str):
-    s = circuit.to_string()
+    s = circuit.to_bytes()
     path = (SCHEMATICS_PATH / level_name / save_name)
     path.mkdir(exist_ok=True, parents=True)
-    (path / "circuit.data").write_text(s)
+    (path / "circuit.data").write_bytes(s)
+
+
+def layout_pos(arg: TruthTable | PoS | tuple[PoS, ...], use_buffer) -> Circuit:
+    if isinstance(arg, TruthTable):
+        arg = arg.to_poses()
+    elif isinstance(arg, PoS):
+        arg = arg,
+    assert isinstance(arg, tuple) and all(isinstance(a, PoS) for a in arg), arg
+
+
+def layout_sop(arg: TruthTable | SoP | tuple[SoP, ...], use_buffer) -> Circuit:
+    if isinstance(arg, TruthTable):
+        arg = arg.to_sopes()
+    elif isinstance(arg, SoP):
+        arg = arg,
+    assert isinstance(arg, tuple) and all(isinstance(a, SoP) for a in arg), arg

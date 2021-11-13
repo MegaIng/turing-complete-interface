@@ -2,12 +2,12 @@ from __future__ import annotations
 
 import json
 from dataclasses import dataclass, field
-from pprint import pprint
-from typing import Any, Callable, Collection, TYPE_CHECKING
+from typing import Any, Callable, Collection, TYPE_CHECKING, Iterable, Literal
 
 from bitarray import bitarray
 
 from turing_complete_interface.circuit_parser import Circuit, GateReference, GateShape, CircuitWire, CircuitPin
+from turing_complete_interface.from_truth_table import Atom
 from turing_complete_interface.logic_nodes import CombinedLogicNode, NodePin
 from turing_complete_interface.tc_components import get_component, rev_components
 
@@ -240,7 +240,6 @@ def layout_with_pydot(node: CombinedLogicNode, io_positions: list[IOPosition], s
     pin_to_io, graph = to_pydot(node, io_positions, space)
     graph.write_svg("test.svg")
     data = json.loads(graph.create(format='json0'))
-    pprint(data)
     del graph
     ionames = {name: io for name, io in pin_to_io.values()}
     gate_refs = []
@@ -317,4 +316,12 @@ def layout_with_pydot(node: CombinedLogicNode, io_positions: list[IOPosition], s
         else:
             assert False, wire
 
-    return Circuit(gate_refs, wires, 99_999, 99_999, 0)
+    return Circuit(gate_refs, wires)
+
+
+GateType = Literal["and", "or", "nor", "nand"]
+
+
+def layout_two_levels(inputs: list[str], first: Iterable[tuple[str, tuple[Atom, ...], GateType]],
+                      second: Iterable[tuple[str, str, bool]], use_buffer: bool = True):
+    pass

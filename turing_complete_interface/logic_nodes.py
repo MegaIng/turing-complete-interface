@@ -299,6 +299,90 @@ wires: {group(wires)}
         except Exception as e:
             raise type(e)(self.name, *e.args)
 
+    @cached_property
+    def force_bit_annotations(self) -> CombinedLogicNode:
+        wires = []
+        changed: bool = False
+        for wire in self.wires:
+            if wire.source_bits is None:
+                source = self.inputs[wire.source[1]] if wire.source[0] is None else self.nodes[wire.source[0]].outputs[
+                    wire.source[1]]
+                source_bits = 0, source.bits
+                changed = True
+            else:
+                source_bits = wire.source_bits
+            if wire.target_bits is None:
+                target = self.outputs[wire.target[1]] if wire.target[0] is None else self.nodes[wire.target[0]].inputs[
+                    wire.target[1]]
+                target_bits = 0, target.bits
+                changed = True
+            else:
+                target_bits = wire.target_bits
+            wires.append(Wire(wire.source, wire.target, source_bits, target_bits))
+        if not changed:
+            return self
+        else:
+            return CombinedLogicNode(self.name, self.nodes, self.inputs, self.outputs, tuple(wires))
+
+    @cached_property
+    def inlined(self) -> CombinedLogicNode:
+        def calculate_new_wires(rewritten_sources, wire: Wire):
+            if len(rewritten_sources) == 1:
+                new_source, orig_source_bits, orig_target_bits = rewritten_sources[0][1]
+                assert orig_source_bits == orig_target_bits == wire.source_bits
+                yield Wire(new_source, wire.target, orig_source_bits, orig_target_bits)
+            else:
+                raise ValueError(rewritten_sources, wire)
+
+        for w in self.wires:
+            assert w.source_bits is not None and w.target_bits is not None, "Need to have a fully bit annotated node (use .force_bit_annotations)"
+        new_nodes = {}
+        new_wires = []
+        changed_sources = defaultdict(list)  # The output locations of internal nodes
+        changed_targets = defaultdict(list)  # The input locations of internal nodes
+        virtual_points = {}  # The places where originally there were inputs of sub nodes
+        for name, node in self.nodes.items():
+            if not isinstance(node, CombinedLogicNode):
+                new_nodes[name] = node
+                continue
+            node = node.force_bit_annotations.inlined
+            for inner_name, inner_node in node.nodes.items():
+                new_name = f"{name}_{inner_name}"
+                new_nodes[new_name] = inner_node
+            for wire in node.wires:
+                match wire:
+                    case Wire(source=(None, input_name), target=(None, output_name)):
+                        virtual_points[None, f"{name}_{input_name}"] = []
+                        changed_sources[name, output_name].append((None, ((None, f"{name}_{input_name}"),
+                                                                          wire.source_bits, wire.target_bits)))
+                    case Wire(source=(None, input_name), target=(inner_node, node_input_name)):
+                        virtual_points[None, f"{name}_{input_name}"] = []
+                        new_wires.append(Wire((None, f"{name}_{input_name}"), (f"{name}_{inner_node}", node_input_name),
+                                              wire.source_bits, wire.target_bits))
+                    case Wire(source=(source_name, input_name), target=(None, output_name)):
+                        changed_sources[name, output_name].append((None, ((f"{name}_{source_name}", input_name),
+                                                                          wire.source_bits, wire.target_bits)))
+                    case Wire(source=(source_name, input_name), target=(target_name, output_name)):
+                        new_wires.append(Wire((f"{name}_{source_name}", input_name),
+                                              (f"{name}_{target_name}", output_name),
+                                              wire.source_bits, wire.target_bits))
+        for wire in self.wires:
+            match wire:
+                case Wire(source=(None, input_name), target=(None, output_name)):
+                    new_wires.append(wire)
+                case Wire(source=(source_name, input_name), target=(None, output_name)):
+                    if wire.source in changed_sources:
+                        new_wires.extend(calculate_new_wires(changed_sources[wire.source], wire))
+                    else:
+                        new_wires.append(wire)
+                case Wire(source=(None, input_name), target=(target_name, output_name)):
+                    new_wires.append(Wire())
+                # case Wire(source=(source_name, input_name), target=(target_name, output_name)):
+                #     assert wire.source in changed_sources, wire.source
+                #     new_wires.extend(calculate_new_wires(changed_sources[wire.source], wire))
+
+        return CombinedLogicNode(self.name, frozendict(new_nodes), self.inputs, self.outputs, tuple(new_wires))
+
 
 def _nand(args, _1, _2):
     try:

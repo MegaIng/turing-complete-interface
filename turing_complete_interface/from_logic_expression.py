@@ -14,17 +14,21 @@ from turing_complete_interface.specification_parser import spec_components
 
 parser = Lark(r"""
 start: assignment+ | lone_expression
-lone_expression: disjunction
+lone_expression: disjunction_opt
 assignment: "!" NAME "=" disjunction -> out_assignment
-          | NAME "=" disjunction
+          | NAME "=" disjunction 
 ?disjunction: (conjunction DISJUNCTION)* conjunction
 ?conjunction: (maybe_pre_negation CONJUNCTION)* maybe_pre_negation
+
+?disjunction_opt: conjunction_opt | (conjunction_opt DISJUNCTION)+ conjunction_opt -> disjunction
+?conjunction_opt: maybe_pre_negation | (maybe_pre_negation [CONJUNCTION])+ maybe_pre_negation -> conjunction
+
 ?maybe_pre_negation: PRE_NEGATION maybe_pre_negation -> pre_negation 
                    | maybe_post_negation
 ?maybe_post_negation: maybe_post_negation POST_NEGATION -> post_negation
                     | atom
 ?atom: NAME -> ref
-     | "(" disjunction ")"
+     | "(" disjunction_opt ")"
 
 DISJUNCTION: "∨" | "+" | "∥" | "|" | "||" | "⊕" | "⊻" | "≢" | "⊽"
 CONJUNCTION: "∧" | "·" | "&" | "&&" | "⊼"
@@ -32,7 +36,7 @@ PRE_NEGATION: "¬" | "˜" | "!" | "~"
 POST_NEGATION: "'"
 NAME: /\w+/
 %ignore /\s+/
-""", parser="lalr")
+""", parser="lalr", maybe_placeholders=True)
 
 OR_OPERATORS = frozenset({"∨", "+", "∥", "|", "||"})
 NOR_OPERATORS = frozenset({"⊽"})
@@ -63,6 +67,7 @@ class _CollectNames(Visitor):
     used_names: set[str] = field(default_factory=set)
     assigned_names: set[str] = field(default_factory=set)
     explicit_export_names: set[str] = field(default_factory=set)
+    has_lone: bool = False
 
     def ref(self, tree):
         self.used_names.add(tree.children[0].value)
@@ -75,6 +80,8 @@ class _CollectNames(Visitor):
     def assignment(self, tree):
         name = tree.children[0].value
         self.assigned_names.add(name)
+    def lone_expression(self, _):
+        self.has_lone = True
 
 
 @dataclass
@@ -94,10 +101,17 @@ class BuildNode(Interpreter):
         cn.visit(tree)
         assert len(cn.used_names & cn.assigned_names) == 0, "Can't deal with temporary variables right now"
         self.inputs = {name: InputPin(1) for name in cn.used_names - cn.assigned_names}
-        self.outputs = {name: OutputPin(1) for name in ((cn.assigned_names - cn.used_names) | cn.explicit_export_names)}
+        self.outputs = {name: OutputPin(1) for name in ((cn.assigned_names - cn.used_names)
+                                                        | cn.explicit_export_names
+                                                        | ({"Q"} if cn.has_lone else set()))}
         self.visit_children(tree)
         return CombinedLogicNode(self.name, frozendict(self.nodes), frozendict(self.inputs), frozendict(self.outputs),
                                  tuple(self.wires))
+    @v_args(inline=True)
+    def lone_expression(self, expression):
+        expression = self.visit(expression)
+        assert "Q" in self.outputs
+        self.wires.append(Wire(expression, (None, "Q"), (0, 1), (0, 1)))
 
     def _add_node(self, component: LogicNodeType, *args):
         self.nodes[i := str(len(self.nodes) + 1)] = component

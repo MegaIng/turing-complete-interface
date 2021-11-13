@@ -171,7 +171,7 @@ def load_circuit(ns) -> tuple[Circuit, LogicNodeType, Space]:
         circuit = build_circuit(node, IOPosition.from_node(node), space)
     else:
         save_name = SCHEMATICS_PATH / ns.level / ns.save
-        circuit = Circuit.parse((save_name / "circuit.data").read_text())
+        circuit = Circuit.parse((save_name / "circuit.data").read_bytes())
         if ns.level == "architecture" and ns.assembly is not None:
             assembly_path = (save_name / ns.assembly).with_suffix(".assembly")
             assembled = assemble(save_name, assembly_path)

@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import os
 import sys
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from math import isfinite
 from pathlib import Path
 from typing import Callable, TypedDict
@@ -34,7 +34,9 @@ class GateReference:
     pos: tuple[int, int]
     rotation: int
     id: str
-    custom_data: str
+    custom_data: str = ""
+    custom_id: int = 0
+    program_name: str = ""
 
     def translate(self, dp: tuple[int, int]):
         dp = self.rot(dp)
@@ -55,11 +57,14 @@ class GateReference:
                  position: NimPoint,
                  rotation: int,
                  permanent_id: int,
-                 custom_string: str) -> GateReference | None:
+                 custom_string: str,
+                 custom_id: int,
+                 program_name: str
+                 ) -> GateReference | None:
         if save_monger.is_virtual(kind):
             return None
         return GateReference(
-            kind, (position["x"], position["y"]), rotation, str(permanent_id), custom_string
+            kind, (position["x"], position["y"]), rotation, str(permanent_id), custom_string, custom_id, program_name
         )
 
     def to_nim(self):
@@ -68,7 +73,9 @@ class GateReference:
             "position": {"x": self.pos[0], "y": self.pos[1]},
             "rotation": self.rotation,
             "permanent_id": int(self.id),
-            "custom_string": self.custom_data
+            "custom_string": self.custom_data,
+            "custom_id": self.custom_id or 0,
+            "program_name": self.program_name or ""
         }
 
 
@@ -106,29 +113,39 @@ class CircuitWire:
 class Circuit:
     gates: list[GateReference]
     wires: list[CircuitWire]
-    nand_cost: int
-    delay: int
-    level_version: int = 0
-    shape: GateShape = None
-
-    @property
-    def score(self):
-        return self.nand_cost + self.delay
+    save_version: int = 0
+    custom_visible: bool = True
+    scale_level: int = 1
+    description: str = ""
+    shape: GateShape | None = None
+    _raw_nim_data: dict = field(default_factory=dict)
 
     @classmethod
-    def parse(cls, text: str) -> Circuit:
-        components, circuits, nand, delay, level_version = save_monger.py_parse_state(text)
+    def parse(cls, text: bytes) -> Circuit:
+        data = save_monger.parse_state(list(text))
         return Circuit(
-            [GateReference.from_nim(**c) for c in components],
-            [CircuitWire.from_nim(**c) for c in circuits],
-            nand, delay, level_version
+            [GateReference.from_nim(**c) for c in data["components"]],
+            [CircuitWire.from_nim(**c) for c in data["circuits"]],
+            data["save_version"],
+            data["custom_visible"],
+            data["scale_level"],
+            data["description"],
+            shape=None,
+            _raw_nim_data=data
         )
 
-    def to_string(self) -> str:
-        return save_monger.parse_state_to_string(
+    def to_bytes(self) -> bytes:
+        self._raw_nim_data["components"] = [g.to_nim() for g in self.gates]
+        self._raw_nim_data["circuits"] = [w.to_nim() for w in self.wires]
+        return save_monger.state_to_binary(
+            self.save_version,
             [g.to_nim() for g in self.gates],
             [w.to_nim() for w in self.wires],
-            self.nand_cost, self.delay, self.level_version
+            99_999,  # nand
+            99_999,  # delay
+            self.custom_visible,
+            self.scale_level,
+            self.description,
         )
 
 
