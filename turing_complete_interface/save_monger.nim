@@ -266,7 +266,7 @@ proc get_circuits*(input: seq[uint8], i: var int): seq[parse_circuit] =
   for j in 0..len - 1:
     result.add(get_circuit(input, i))
 
-proc parse_state*(input: seq[uint8], meta_only = false): parse_result {.exportpy.} =
+proc parse_state*(input: seq[uint8], meta_only: bool = false): parse_result {.exportpy.} =
   result.nand = 99999.uint32
   result.delay = 99999.uint32
   result.clock_speed = 1000.uint32

@@ -37,6 +37,7 @@ class GateReference:
     custom_data: str = ""
     custom_id: int = 0
     program_name: str = ""
+    program_data: list[int] = ()
 
     def translate(self, dp: tuple[int, int]):
         dp = self.rot(dp)
@@ -59,12 +60,13 @@ class GateReference:
                  permanent_id: int,
                  custom_string: str,
                  custom_id: int,
-                 program_name: str
+                 program_name: str,
+                 program_data: list[int],
                  ) -> GateReference | None:
         if save_monger.is_virtual(kind):
             return None
         return GateReference(
-            kind, (position["x"], position["y"]), rotation, str(permanent_id), custom_string, custom_id, program_name
+            kind, (position["x"], position["y"]), rotation, str(permanent_id), custom_string, custom_id, program_name, program_data
         )
 
     def to_nim(self):
@@ -114,8 +116,8 @@ class Circuit:
     gates: list[GateReference]
     wires: list[CircuitWire]
     save_version: int = 0
-    custom_visible: bool = True
-    scale_level: int = 1
+    menu_visible: bool = True
+    nesting_level: int = 1
     description: str = ""
     shape: GateShape | None = None
     _raw_nim_data: dict = field(default_factory=dict)
@@ -127,8 +129,8 @@ class Circuit:
             [GateReference.from_nim(**c) for c in data["components"]],
             [CircuitWire.from_nim(**c) for c in data["circuits"]],
             data["save_version"],
-            data["custom_visible"],
-            data["scale_level"],
+            data["menu_visible"],
+            data["nesting_level"],
             data["description"],
             shape=None,
             _raw_nim_data=data
@@ -143,8 +145,8 @@ class Circuit:
             [w.to_nim() for w in self.wires],
             99_999,  # nand
             99_999,  # delay
-            self.custom_visible,
-            self.scale_level,
+            self.menu_visible,
+            self.nesting_level,
             self.description,
         )
 
