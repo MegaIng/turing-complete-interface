@@ -7,7 +7,7 @@ from typing import Any, Callable, Collection, TYPE_CHECKING, Iterable, Literal
 from bitarray import bitarray
 
 from turing_complete_interface.circuit_parser import Circuit, GateReference, GateShape, CircuitWire, CircuitPin
-from turing_complete_interface.from_truth_table import Atom
+from turing_complete_interface.truth_table import Atom
 from turing_complete_interface.logic_nodes import CombinedLogicNode, NodePin
 from turing_complete_interface.tc_components import get_component, rev_components
 

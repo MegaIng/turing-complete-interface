@@ -77,7 +77,7 @@ def build_connected_groups(circuit: Circuit) -> tuple[dict[str, LogicNodeType], 
     circuit_outputs = {}
 
     for gate in circuit.gates:
-        shape, node = get_component(gate.name, gate.custom_data)
+        shape, node = get_component(gate.name, gate.custom_data if gate.name != "Custom" else gate.custom_id)
         assert set(node.inputs.keys()) | set(node.outputs.keys()) == set(map(str, shape.pins)), (
             set(node.inputs.keys()) | set(node.outputs.keys()), set(map(str, shape.pins)), node, shape)
         if not shape.is_io:

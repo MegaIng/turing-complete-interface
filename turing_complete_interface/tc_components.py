@@ -7,8 +7,9 @@ from bitarray import bitarray, frozenbitarray
 from bitarray.util import int2ba, ba2int
 from frozendict import frozendict
 
-from .circuit_parser import GateShape, GateReference, SPECIAL, NORMAL, CircuitPin, BigShape, SCHEMATICS_PATH, CUSTOM, \
-    Circuit
+from .circuit_parser import GateShape, GateReference, SPECIAL_RED, NORMAL, CircuitPin, BigShape, SCHEMATICS_PATH, \
+    CUSTOM, \
+    Circuit, SPECIAL_GREEN
 from .logic_nodes import LogicNodeType, DirectLogicNodeType, InputPin, OutputPin, build_or as ln_build_or, \
     builtins_gates, CombinedLogicNode, Wire
 from .specification_parser import load_all_components, spec_components
@@ -200,8 +201,9 @@ def build_counter(gate_name, custom_data):
 
 
 category_colors = {
-    "IO": SPECIAL,
-    "special": SPECIAL,
+    "IO": SPECIAL_RED,
+    "special": SPECIAL_RED,
+    "special_green": SPECIAL_GREEN,
     "normal": NORMAL,
 }
 
@@ -307,47 +309,73 @@ def compute_gate_shape(circuit, name: str) -> GateShape:
                     out_pin = f"{gate.id}.{pin_name}"
                 else:
                     out_pin = gate.id
-                pins[out_pin] = CircuitPin(p, pin.is_input, pin.is_byte)
+                if gate.custom_data:
+                    cc_pin_name = gate.custom_data.partition(':')[-1]
+                else:
+                    cc_pin_name = out_pin
+                pins[out_pin] = CircuitPin(p, not pin.is_input, pin.is_byte, name=cc_pin_name)
     circuit.shape = GateShape(name, CUSTOM, pins, list(blocks))
     return circuit.shape
 
 
+@dataclass
+class _CustomComponentRef:
+    path: Path
+    circuit: Circuit
+    shape: GateShape = None
+    node: LogicNodeType = None
+
+    def get(self):
+        if self.shape is None:
+            from .circuit_compiler import build_gate
+            self.shape = compute_gate_shape(self.circuit, f"Custom_{self.path.name}")
+            self.node = build_gate(f"Custom_{self.path.name}", self.circuit)
+            if self.node.name in rev_components:
+                raise ValueError(f"Non unique node name {self.node.name} (for Custom component {self.path.name})")
+            rev_components[self.node.name] = ("Custom", self.id)
+        return self.shape, self.node
+
+    @property
+    def id(self) -> int:
+        return self.circuit.save_version
+
+
 def load_custom():
-    res = {}
-    for path in Path(SCHEMATICS_PATH / "component_factory").iterdir():
+    global cc_by_path, cc_by_id
+    base = SCHEMATICS_PATH / "component_factory"
+    for path in Path(base).rglob("circuit.data"):
         try:
-            circuit = Circuit.parse((path / "circuit.data").read_bytes())
+            circuit = Circuit.parse(path.read_bytes())
             # Don't compile immediately. Wait if we are asked
-            res[path.name] = circuit, None, None
+            ref = _CustomComponentRef(path.relative_to(base).parent, circuit)
+            cc_by_id[circuit.save_version] = ref
+            cc_by_path[str(path.relative_to(base).parent)] = ref
         except Exception as e:
             print(type(e), e)
-    return res
-
 
 
 std_components: dict[str, tuple[GateShape, LogicNodeType]]
-rev_components: dict[str, tuple[str, str]]
+rev_components: dict[str, tuple[str, str | int]]
 std_components, rev_components = load_components()
-custom_components: dict[str, tuple[Circuit, GateShape | None, LogicNodeType | None]]
+cc_by_path: dict[str, _CustomComponentRef] = {}
+cc_by_id: dict[int, _CustomComponentRef] = {}
 if SCHEMATICS_PATH is not None:
-    custom_components = load_custom()
-else:
-    custom_components = {}
+    load_custom()
 
 
-def get_component(gate_name: str, custom_data: str, no_node: bool = False) -> tuple[GateShape, LogicNodeType | None]:
+def get_custom_component(custom_data: str | int):
+    try:
+        ref = cc_by_id[int(custom_data)]
+    except (ValueError, KeyError):
+        ref = cc_by_path[custom_data]
+    ref.get()
+    return ref
+
+
+def get_component(gate_name: str, custom_data: str | int, no_node: bool = False) -> tuple[
+    GateShape, LogicNodeType | None]:
     if gate_name == "Custom":
-        assert custom_data in custom_components
-        circuit, shape, node = custom_components[custom_data]
-        if shape is None:
-            from .circuit_compiler import build_gate
-            shape = compute_gate_shape(circuit, f"{gate_name}_{custom_data}")
-            node = build_gate(f"{gate_name}_{custom_data}", circuit)
-            custom_components[custom_data] = circuit, shape, node
-            if node.name in rev_components:
-                raise ValueError(f"Non unique node name {node.name} (for Custom component {custom_data})")
-            rev_components[node.name] = ("Custom", custom_data)
-        return custom_components[custom_data][1:]
+        return get_custom_component(custom_data).get()
     s, n = std_components[gate_name]
     if callable(n):
         if not no_node:

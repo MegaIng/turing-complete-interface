@@ -21,7 +21,7 @@ json_data = json.loads(Path(__file__).with_name("level_layouts.json").read_text(
 def get_layout(name: str) -> LevelLayout:
     if name in json_data:
         data = json_data[name]
-        d = data["inputs"]
+        d = data["IO"]
         return LevelLayout(
             tuple(data.get("size", default_size)),
             d if d is None else [IOPosition(io["type"], io["pins"], io["id"]) for io in d]

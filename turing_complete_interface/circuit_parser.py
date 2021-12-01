@@ -165,6 +165,7 @@ class CircuitPin:
     is_input: bool
     is_byte: bool = False
     is_delayed: bool = False
+    name: str = None
 
 
 @dataclass
@@ -203,7 +204,8 @@ class GateShape:
         return gate_ref.pos[0] + p.pos[0], gate_ref.pos[1] + p.pos[1]
 
 
-SPECIAL = (206, 89, 107)
+SPECIAL_RED = (206, 89, 107)
+SPECIAL_GREEN = (0, 179, 33)
 NORMAL = (28, 95, 147)
 CUSTOM = (30, 165, 174)
 

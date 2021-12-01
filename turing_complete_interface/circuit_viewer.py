@@ -172,7 +172,7 @@ def load_circuit(ns) -> tuple[Circuit, LogicNodeType, Space]:
     else:
         save_name = SCHEMATICS_PATH / ns.level / ns.save
         circuit = Circuit.parse((save_name / "circuit.data").read_bytes())
-        if ns.level == "architecture" and ns.assembly is not None:
+        if ns.level == "architecture" and ns.assembly:
             assembly_path = (save_name / ns.assembly).with_suffix(".assembly")
             assembled = assemble(save_name, assembly_path)
             tc_components.program.clear()
@@ -227,7 +227,7 @@ def view_circuit(circuit, node, space, output_handler: Callable[[pg.Surface], Wo
 
     W, H = 640, 480
     sdl_frame = tk.Frame(root, width=W, height=H)
-    sdl_frame.grid(column=1, row=0, rowspan=i)
+    sdl_frame.grid(column=1, row=0, rowspan=max(i, 1))
     root.update()
     os.environ["SDL_WINDOWID"] = str(sdl_frame.winfo_id())
     wire_values = {}
@@ -340,7 +340,7 @@ def view_circuit(circuit, node, space, output_handler: Callable[[pg.Surface], Wo
             for wire in circuit.wires:
                 draw_wire(view, wire)
             for gate in circuit.gates:
-                shape, _ = get_component(gate.name, gate.custom_data)
+                shape, _ = get_component(gate.name, gate.custom_data if gate.name != "Custom" else gate.custom_id)
                 draw_gate(view, gate, shape, hover_text, wire_values, (gate.id in cycle if cycle else False))
             # shape = compute_gate_shape(circuit, "main")
             # draw_gate(view, GateReference("main", (0,0), 0, "-1", ""), shape)
@@ -375,7 +375,7 @@ if __name__ == '__main__':
         options = [d.name for d in SCHEMATICS_PATH.iterdir() if d.is_dir()]
         ns.level = prompt("Enter level name> ", completer=FuzzyCompleter(WordCompleter(options, sentence=True)))
     if ns.save is None and SCHEMATICS_PATH is not None:
-        options = [d.name for d in (SCHEMATICS_PATH / ns.level).iterdir() if d.is_dir()]
+        options = [str(d.relative_to(SCHEMATICS_PATH / ns.level).parent) for d in (SCHEMATICS_PATH / ns.level).rglob("circuit.data")]
         ns.save = prompt("Enter save name> ", completer=FuzzyCompleter(WordCompleter(options, sentence=True)))
     if ns.assembly is None and ns.level == "architecture":
         options = []

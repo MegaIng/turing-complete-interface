@@ -2615,18 +2615,6 @@
     }
   },
   "special": {
-    "LevelGate": {
-      "blocks": [
-        [
-          0,
-          0
-        ]
-      ],
-      "func": "noop",
-      "pins": {},
-      "state_size": 0,
-      "type": "direct"
-    },
     "Screen": {
       "big_shape": [
         [
@@ -2646,6 +2634,61 @@
       ],
       "func": "noop",
       "pins": {},
+      "state_size": 0,
+      "type": "direct"
+    }
+  },
+  "special_green": {
+    "LevelGate": {
+      "blocks": [
+        [
+          0,
+          0
+        ],
+        [0,1], [0,-1],
+        [1,0], [-1,0],
+        [1,1], [1,-1],
+        [-1,1], [-1,-1],
+
+        [1,2], [1,-2],
+        [0,2], [0,-2],
+        [-1,2], [-1,-2]
+      ],
+      "func": "noop",
+      "pins": {
+        "in0": {
+          "pos": [
+            -2,
+            -1
+          ],
+          "size": "bit",
+          "type": "input"
+        },
+        "in1": {
+          "pos": [
+            -2,
+            0
+          ],
+          "size": "bit",
+          "type": "input"
+        },
+        "in2": {
+          "pos": [
+            -2,
+            1
+          ],
+          "size": "bit",
+          "type": "input"
+        },
+        "out": {
+          "pos": [
+            2,
+            0
+          ],
+          "size": "bit",
+          "type": "output"
+        }
+      },
       "state_size": 0,
       "type": "direct"
     }

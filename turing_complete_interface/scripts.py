@@ -1,9 +1,10 @@
-from typing import Literal
+from os import PathLike
+from typing import Literal, overload
 
 from turing_complete_interface.circuit_builder import build_circuit, IOPosition, layout_with_pydot
 from turing_complete_interface.circuit_parser import Circuit, SCHEMATICS_PATH
 from turing_complete_interface.from_logic_expression import from_logic_expression
-from turing_complete_interface.from_truth_table import TruthTable, PoS, SoP
+from turing_complete_interface.truth_table import TruthTable, PoS, SoP
 from turing_complete_interface.level_layouts import LevelLayout
 from turing_complete_interface.logic_nodes import LogicNodeType
 from turing_complete_interface.verilog_parser import parse_verilog
@@ -34,6 +35,12 @@ def select_level(name: str):
     selected_level = name
 
 
+def load_circuit(path: PathLike | str) -> Circuit:
+    assert selected_level is not None
+    circuit_file = SCHEMATICS_PATH / selected_level / path / "circuit.data"
+    return Circuit.parse(circuit_file.read_bytes())
+
+
 def logic_expression_to_node(expression: str) -> LogicNodeType:
     if selected_level is not None:
         name = selected_level[-1]
@@ -58,7 +65,18 @@ def save_custom_component(circuit: Circuit, name: str):
     save_level(circuit, "component_factory", name)
 
 
-def save_level(circuit: Circuit, level_name: str, save_name: str):
+@overload
+def save_level(circuit: Circuit, save_name: str): ...
+
+
+@overload
+def save_level(circuit: Circuit, level_name: str, save_name: str): ...
+
+
+def save_level(circuit: Circuit, level_name: str, save_name: str = None):
+    if save_name is None:
+        assert selected_level is not None
+        level_name, save_name = selected_level, level_name
     s = circuit.to_bytes()
     path = (SCHEMATICS_PATH / level_name / save_name)
     path.mkdir(exist_ok=True, parents=True)

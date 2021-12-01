@@ -214,4 +214,30 @@ def parse_verilog(text: str) -> CombinedLogicNode:
     ln, = Verilog2LogicNode().visit(tree)
     return ln
 
-# def generate_verilog(node: CombinedLogicNode) -> str:
+
+@dataclass
+class VerilogModule:
+    name: str
+    needs_clock: str | None
+    ports: dict[str, str]
+    code: str | None = None
+
+
+verilog_modules = {
+    d["tc"]: VerilogModule(v, d.get("clk", None),
+                           {tc_pin: port for port, tc_pin in d["pins"].items() if tc_pin is not None})
+    for v, d in verilog_to_tc.items()
+}
+
+
+def generate_verilog(node: CombinedLogicNode) -> str:
+    # We take the easy way out and generate one wire for each port of each node
+    # We then generate assigns based on actual wires.
+    # This might generate unnecessary wires, but later processors can deal with that.
+    need_clk = False
+    wire_defs = {}
+
+
+    return f"""
+module {node.name}({', '.join((*(('clk',) if need_clk else ()), *node.inputs, *node.outputs))});
+"""
