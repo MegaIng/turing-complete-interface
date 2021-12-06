@@ -64,6 +64,36 @@
       "state_size": 0,
       "type": "virtual"
     },
+    "InputQword": {
+      "blocks": [
+        [
+          0,
+          0
+        ]
+      ],
+      "big_shape": [
+        [
+          -2,
+          -2
+        ],
+        [
+          5,
+          3
+        ]
+      ],
+      "pins": {
+        "value": {
+          "pos": [
+            3,
+            0
+          ],
+          "size": "byte",
+          "type": "output"
+        }
+      },
+      "state_size": 0,
+      "type": "virtual"
+    },
     "Input1BConditions": {
       "blocks": [
         [
@@ -318,6 +348,37 @@
           "is_delayed": false,
           "pos": [
             -1,
+            0
+          ],
+          "size": "byte",
+          "type": "input"
+        }
+      },
+      "state_size": 0,
+      "type": "virtual"
+    },
+    "OutputQword": {
+      "blocks": [
+        [
+          0,
+          0
+        ]
+      ],
+      "big_shape": [
+        [
+          -2,
+          -2
+        ],
+        [
+          5,
+          3
+        ]
+      ],
+      "pins": {
+        "value": {
+          "is_delayed": false,
+          "pos": [
+            -3,
             0
           ],
           "size": "byte",
@@ -1635,6 +1696,119 @@
       "spec": "TC_BYTE_SPLITTER",
       "type": "combined"
     },
+    "QwordSplitter": {
+      "blocks": [
+        [
+          0,
+          -3
+        ],
+        [
+          0,
+          -2
+        ],
+        [
+          0,
+          -1
+        ],
+        [
+          0,
+          0
+        ],
+        [
+          0,
+          1
+        ],
+        [
+          0,
+          2
+        ],
+        [
+          0,
+          3
+        ],
+        [
+          0,
+          4
+        ]
+      ],
+      "pins": {
+        "in": {
+          "is_delayed": false,
+          "pos": [
+            -1,
+            0
+          ],
+          "size": "byte",
+          "type": "input"
+        },
+        "r0": {
+          "pos": [
+            1,
+            -3
+          ],
+          "size": "bits",
+          "type": "output"
+        },
+        "r1": {
+          "pos": [
+            1,
+            -2
+          ],
+          "size": "bits",
+          "type": "output"
+        },
+        "r2": {
+          "pos": [
+            1,
+            -1
+          ],
+          "size": "bits",
+          "type": "output"
+        },
+        "r3": {
+          "pos": [
+            1,
+            0
+          ],
+          "size": "bits",
+          "type": "output"
+        },
+        "r4": {
+          "pos": [
+            1,
+            1
+          ],
+          "size": "bits",
+          "type": "output"
+        },
+        "r5": {
+          "pos": [
+            1,
+            2
+          ],
+          "size": "bits",
+          "type": "output"
+        },
+        "r6": {
+          "pos": [
+            1,
+            3
+          ],
+          "size": "bits",
+          "type": "output"
+        },
+        "r7": {
+          "pos": [
+            1,
+            4
+          ],
+          "size": "bits",
+          "type": "output"
+        }
+      },
+      "spec": "TC_QWORD_SPLITTER",
+      "type": "combined"
+    },
     "ByteSwitch": {
       "blocks": [
         [
@@ -2645,14 +2819,62 @@
           0,
           0
         ],
-        [0,1], [0,-1],
-        [1,0], [-1,0],
-        [1,1], [1,-1],
-        [-1,1], [-1,-1],
-
-        [1,2], [1,-2],
-        [0,2], [0,-2],
-        [-1,2], [-1,-2]
+        [
+          0,
+          1
+        ],
+        [
+          0,
+          -1
+        ],
+        [
+          1,
+          0
+        ],
+        [
+          -1,
+          0
+        ],
+        [
+          1,
+          1
+        ],
+        [
+          1,
+          -1
+        ],
+        [
+          -1,
+          1
+        ],
+        [
+          -1,
+          -1
+        ],
+        [
+          1,
+          2
+        ],
+        [
+          1,
+          -2
+        ],
+        [
+          0,
+          2
+        ],
+        [
+          0,
+          -2
+        ],
+        [
+          -1,
+          2
+        ],
+        [
+          -1,
+          -2
+        ]
       ],
       "func": "noop",
       "pins": {

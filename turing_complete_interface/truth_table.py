@@ -3,7 +3,7 @@ from __future__ import annotations
 import random
 from collections import defaultdict
 from dataclasses import dataclass, field
-from itertools import product
+from itertools import product, groupby
 from typing import Callable, Iterable, Literal
 
 from bitarray import bitarray
@@ -155,17 +155,41 @@ class TruthTable:
     def split(self) -> Iterable[TruthTable]:
         return (
             TruthTable(self.in_vars, (ov,), {
-                ins:(out[i],) for ins, out in self.cares.items()
+                ins: (out[i],) for ins, out in self.cares.items()
             })
-            for i,ov in enumerate(self.out_vars)
+            for i, ov in enumerate(self.out_vars)
         )
+
+    def to_csv(self):
+        def s(v):
+            if isinstance(v, str):
+                return v
+            elif isinstance(v, int):
+                return '1' if v else '0'
+            else:
+                assert v is None, v
+                return 'X'
+
+        return "\n".join(
+            ",".join((*map(s, row[:len(self.in_vars)]), '', *map(s, row[len(self.in_vars):])))
+            for row in (
+                (*self.in_vars, *self.out_vars),
+                *((*i, *o) for i, o in self.cares.items())
+            )
+        )
+
+    def result_groups(self):
+        def key(t):
+            return tuple({None: -1, False: 0, True: 1}[v] for v in t[1])
+
+        return ((k, (i for i, _ in v)) for k,v in groupby(sorted(self.cares.items(), key=key), key=key))
 
 
 @dataclass
 class LUTVariable:
     name: str
     bit_size: int
-    aliases: dict[str | int, int | tuple[int | bool, ...]]
+    aliases: dict[str | int, int | tuple[int | bool, ...]] = field(default_factory=dict)
     default: Literal["int", "tuple"] = "int"
 
     def to_bits(self, v) -> tuple[bool | None, ...]:
@@ -220,19 +244,30 @@ class LUT:
         return '\n'.join(f'{k:>{kw}} -> {v:>{vw}} {b}' for k, v, b in rows)
 
     def set(self, inputs, outputs):
-        assert len(inputs) == len(self.in_vars), inputs
-        assert len(outputs) == len(self.out_vars), outputs
-        in_bits = tuple(b for i, v in zip(self.in_vars, inputs, strict=True) for b in i.to_bits(v))
-        out_bits = tuple(b for o, v in zip(self.out_vars, outputs, strict=True) for b in o.to_bits(v))
+        in_bits = self.encode_in(inputs)
+        out_bits = self.encode_out(outputs)
         try:
             self.truth.set(in_bits, out_bits, unique=True)
         except Exception as e:
             raise ValueError(f"Can't insert {inputs} -> {outputs}") from e
 
     def encode_in(self, values):
+        if len(self.in_vars) == 1:
+            try:
+                return self.in_vars[0].to_bits(values)
+            except ValueError:
+                pass
+        assert len(values) == len(self.in_vars), values
+
         return tuple(b for i, v in zip(self.in_vars, values, strict=True) for b in i.to_bits(v))
 
     def encode_out(self, values):
+        if len(self.out_vars) == 1:
+            try:
+                return self.out_vars[0].to_bits(values)
+            except ValueError:
+                pass
+        assert len(values) == len(self.out_vars), values
         return tuple(b for o, v in zip(self.out_vars, values, strict=True) for b in o.to_bits(v))
 
     def decode_in(self, bits):

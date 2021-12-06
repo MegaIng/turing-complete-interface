@@ -13,6 +13,8 @@ except ImportError:
     print("Couldn't import nimporter. Assuming that save_monger is available anyway.")
 from turing_complete_interface import save_monger
 
+Pos = tuple[int, int]
+
 
 def pre_parse(text: str) -> list[list[list[list[str]]]]:
     return [[
@@ -33,7 +35,7 @@ class GateReference:
     name: str
     pos: tuple[int, int]
     rotation: int
-    id: str
+    id: int
     custom_data: str = ""
     custom_id: int = 0
     program_name: str = ""
@@ -66,7 +68,8 @@ class GateReference:
         if save_monger.is_virtual(kind):
             return None
         return GateReference(
-            kind, (position["x"], position["y"]), rotation, str(permanent_id), custom_string, custom_id, program_name, program_data
+            kind, (position["x"], position["y"]), rotation, permanent_id, custom_string, custom_id, program_name,
+            program_data
         )
 
     def to_nim(self):
@@ -84,10 +87,16 @@ class GateReference:
 @dataclass
 class CircuitWire:
     id: int
-    is_byte: bool
+    kind: str
     color: int
     label: str
     positions: list[tuple[int, int]]
+
+    @property
+    def is_byte(self):
+        if self.kind == "ck_qword":
+            raise NotImplementedError("This part of code is not 64bit aware")
+        return self.kind == "ck_bytes"
 
     @classmethod
     def from_nim(cls,
@@ -96,19 +105,45 @@ class CircuitWire:
                  kind: str,
                  color: int,
                  comment: str) -> CircuitWire:
-        assert kind in ("ck_bit", "ck_byte"), kind
+        assert kind in ("ck_bit", "ck_byte", "ck_qword"), kind
         return CircuitWire(
-            permanent_id, kind == "ck_byte", color, comment, [(p["x"], p["y"]) for p in path]
+            permanent_id, kind, color, comment, [(p["x"], p["y"]) for p in path]
         )
 
     def to_nim(self):
         return {
             "permanent_id": self.id,
             "path": [{"x": p[0], "y": p[1]} for p in self.positions],
-            "kind": ["ck_bit", "ck_byte"][self.is_byte],
+            "kind": self.kind,
             "color": self.color,
             "comment": self.label
         }
+
+    @property
+    def screen_color(self):
+
+        BIT_COLORS = {
+            0: (227, 158, 69),
+            1: (219, 227, 69),
+            2: (150, 227, 69),
+            3: (69, 227, 150),
+            4: (68, 220, 228),
+            5: (68, 68, 228),
+            6: (152, 68, 228),
+            7: (227, 69, 201),
+            8: (227, 110, 79),
+            9: (255, 255, 255),
+            10: (122, 122, 122),
+            11: (54, 54, 54),
+        }
+        if self.color == 0:
+            if self.kind == "ck_bit":
+                return BIT_COLORS[self.color]
+            elif self.kind == "ck_byte":
+                return (61, 154, 204)
+            else:
+                return (59, 198, 64)
+        return BIT_COLORS[self.color]
 
 
 @dataclass
@@ -149,6 +184,54 @@ class Circuit:
             self.nesting_level,
             self.description,
         )
+
+    def add_component(self, kind: str, pos: tuple[int, int], rotation: int = 0, **kwargs):
+        new_id = max((g.id for g in self.gates), default=1) + 1
+        self.gates.append(gf := GateReference(kind, pos, rotation, new_id, **kwargs))
+        return gf
+
+    def add_wire(self, path: list[Pos], kind: str = "ck_bit", **kwargs):
+        kwargs.setdefault("color", 0)
+        kwargs.setdefault("label", "")
+        new_id = max((w.id for w in self.wires), default=1) + 1
+        self.wires.append(w := CircuitWire(new_id, kind, positions=path, **kwargs))
+        return w
+
+    def bounding_box(self, include_wires: bool = False):
+        from turing_complete_interface.tc_components import get_component
+
+        start_x, start_y = (200, 200)
+        end_x, end_y = (-200, -200)
+        for g in self.gates:
+            shape = get_component(g.name, g.custom_data if g.name != "Custom" else g.custom_id,
+                                  no_node=True)[0]
+            tl = g.translate(shape.bounding_box[:2])
+            br = g.translate((shape.bounding_box[0] + shape.bounding_box[2],
+                              shape.bounding_box[1] + shape.bounding_box[3]))
+            if tl[0] < start_x:
+                start_x = tl[0]
+            if tl[1] < start_y:
+                start_y = tl[1]
+            if br[0] > end_x:
+                end_x = br[0]
+            if br[1] > end_y:
+                end_y = br[1]
+        if include_wires:
+            for w in self.wires:
+                for p in w.positions:
+                    if p[0] < start_x:
+                        start_x = p[0]
+                    if p[1] < start_y:
+                        start_y = p[1]
+                    if p[0] > end_x:
+                        end_x = p[0]
+                    if p[1] > end_y:
+                        end_y = p[1]
+
+        if 200 == end_x == end_y == start_x == start_y:
+            return (0, 0, 0, 0)
+        else:
+            return start_x, start_y, end_x - start_x, end_y - start_y
 
 
 @dataclass

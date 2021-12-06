@@ -2,12 +2,16 @@ from os import PathLike
 from typing import Literal, overload
 
 from turing_complete_interface.circuit_builder import build_circuit, IOPosition, layout_with_pydot
+from turing_complete_interface.circuit_compiler import build_gate
 from turing_complete_interface.circuit_parser import Circuit, SCHEMATICS_PATH
+from turing_complete_interface.circuit_viewer import view_circuit
 from turing_complete_interface.from_logic_expression import from_logic_expression
-from turing_complete_interface.truth_table import TruthTable, PoS, SoP
-from turing_complete_interface.level_layouts import LevelLayout
+from turing_complete_interface.from_truth_table import CompactTruthTableGenerator, Pattern, ComponentTemplate, SortPins, \
+    FromGates, GatesByKind, CustomByName, FilterPins, Concatenate
+from turing_complete_interface.truth_table import TruthTable, PoS, SoP, LUT, LUTVariable
+from turing_complete_interface.level_layouts import LevelLayout, get_layout
 from turing_complete_interface.logic_nodes import LogicNodeType
-from turing_complete_interface.verilog_parser import parse_verilog
+from turing_complete_interface.verilog_parser import parse_verilog, generate_verilog
 
 selected_level: str | None = None
 level_layout: LevelLayout = LevelLayout((-31, -31, 62, 62), None)
@@ -53,6 +57,10 @@ def verilog_to_node(verilog: str, module_name: _NameSources | str = USE_MODULE_N
     return parse_verilog(verilog)
 
 
+def node_to_verilog(node: LogicNodeType, top_module_name: str = None) -> str:
+    return generate_verilog(node, top_module_name or node.name)
+
+
 def node_to_circuit(node: LogicNodeType) -> Circuit:
     return build_circuit(node, level_layout.fixed_io or IOPosition.from_node(node), level_layout.new_space())
 
@@ -89,6 +97,7 @@ def layout_pos(arg: TruthTable | PoS | tuple[PoS, ...], use_buffer) -> Circuit:
     elif isinstance(arg, PoS):
         arg = arg,
     assert isinstance(arg, tuple) and all(isinstance(a, PoS) for a in arg), arg
+    raise NotImplementedError
 
 
 def layout_sop(arg: TruthTable | SoP | tuple[SoP, ...], use_buffer) -> Circuit:
@@ -97,3 +106,21 @@ def layout_sop(arg: TruthTable | SoP | tuple[SoP, ...], use_buffer) -> Circuit:
     elif isinstance(arg, SoP):
         arg = arg,
     assert isinstance(arg, tuple) and all(isinstance(a, SoP) for a in arg), arg
+    raise NotImplementedError
+
+
+def show_circuit(circuit: Circuit, no_simulation=False):
+    view_circuit(circuit,
+                 build_gate(selected_level or "main", circuit) if not no_simulation else None,
+                 get_layout(selected_level).new_space())
+
+
+def lut_from_bytes(raw: bytes, in_bits: int, out_bits: int):
+    assert out_bits == 8, "Different out sizes not supported"
+    lut = LUT((LUTVariable("address", in_bits),), (LUTVariable("out", out_bits),))
+    for i, v in enumerate(raw):
+        if i > 2 ** in_bits:
+            break
+        lut.set(i, v)
+    return lut
+

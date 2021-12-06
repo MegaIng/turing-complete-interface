@@ -29,7 +29,7 @@ def _get_rect_corners(rect: RECT_COMPATIBLE) -> tuple[tuple[float, float], tuple
     return (x, y), (x + w, y + h)
 
 
-@dataclass
+@dataclass(kw_only=True)
 class WorldView:
     screen: pg.Surface
     offset_x: float = 0  # These are in world coordinates
@@ -91,8 +91,8 @@ class WorldView:
 
     @classmethod
     def centered(cls, screen: pg.Surface, world_center: POINT_COMPATIBLE = (0, 0), scale_x: float = 1,
-                 scale_y: float = None) -> WorldView:
-        view = WorldView(screen, scale_x=scale_x, scale_y=(scale_x if scale_y is None else scale_y))
+                 scale_y: float = None, **kwargs) -> WorldView:
+        view = cls(screen=screen, scale_x=scale_x, scale_y=(scale_x if scale_y is None else scale_y), **kwargs)
         view.move(world_center, (screen.get_width() / 2, screen.get_height() / 2))
         return view
 

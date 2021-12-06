@@ -11,7 +11,7 @@ if __name__ == '__main__':
 
     parser = argparse.ArgumentParser()
     parser.add_argument("--spec", help="Output the .spec file.", action="store_true")
-    parser.add_argument("-l", "--level", help="The level to store in. If not set output to stdout", action="store")
+    parser.add_argument("-l", "--level", help="The level to store in. If not set, output to stdout", action="store")
     parser.add_argument("-s", "--save", help="The save in the level to store in. Defaults to a new name",
                         action="store")
     parser.add_argument("verilog", help="The verilog file to take as input.", type=Path)

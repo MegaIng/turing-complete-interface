@@ -5,9 +5,8 @@ from frozendict import frozendict
 from turing_complete_interface.tc_components import compute_gate_shape, get_component, spec_components
 from .logic_nodes import LogicNodeType, Wire, OutputPin, InputPin, CombinedLogicNode, \
     build_or, CONST
-from .circuit_parser import Circuit, GateReference, GateShape
+from .circuit_parser import Circuit, GateReference, GateShape, Pos
 
-Pos = tuple[int, int]
 
 
 def build_connections(circuit: Circuit) -> dict[Pos, set[Pos]]:

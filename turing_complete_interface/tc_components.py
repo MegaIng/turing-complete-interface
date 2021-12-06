@@ -314,7 +314,7 @@ def compute_gate_shape(circuit, name: str) -> GateShape:
                 else:
                     cc_pin_name = out_pin
                 pins[out_pin] = CircuitPin(p, not pin.is_input, pin.is_byte, name=cc_pin_name)
-    circuit.shape = GateShape(name, CUSTOM, pins, list(blocks))
+    circuit.shape = GateShape(name, CUSTOM, pins, list(blocks), text=lambda _: name)
     return circuit.shape
 
 
@@ -325,10 +325,11 @@ class _CustomComponentRef:
     shape: GateShape = None
     node: LogicNodeType = None
 
-    def get(self):
+    def get(self, no_node: bool = False):
         if self.shape is None:
-            from .circuit_compiler import build_gate
             self.shape = compute_gate_shape(self.circuit, f"Custom_{self.path.name}")
+        if self.node is None and not no_node:
+            from .circuit_compiler import build_gate
             self.node = build_gate(f"Custom_{self.path.name}", self.circuit)
             if self.node.name in rev_components:
                 raise ValueError(f"Non unique node name {self.node.name} (for Custom component {self.path.name})")
@@ -338,6 +339,10 @@ class _CustomComponentRef:
     @property
     def id(self) -> int:
         return self.circuit.save_version
+
+    @property
+    def name(self):
+        return self.path.name
 
 
 def load_custom():
@@ -363,19 +368,19 @@ if SCHEMATICS_PATH is not None:
     load_custom()
 
 
-def get_custom_component(custom_data: str | int):
+def get_custom_component(custom_data: str | int, no_node: bool = False):
     try:
         ref = cc_by_id[int(custom_data)]
     except (ValueError, KeyError):
         ref = cc_by_path[custom_data]
-    ref.get()
+    ref.get(no_node)
     return ref
 
 
 def get_component(gate_name: str, custom_data: str | int, no_node: bool = False) -> tuple[
     GateShape, LogicNodeType | None]:
     if gate_name == "Custom":
-        return get_custom_component(custom_data).get()
+        return get_custom_component(custom_data, no_node).get(no_node)
     s, n = std_components[gate_name]
     if callable(n):
         if not no_node:

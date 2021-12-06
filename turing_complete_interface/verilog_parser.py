@@ -8,7 +8,7 @@ from lark import Lark, Transformer, v_args, Discard, Tree
 from lark.visitors import Interpreter
 from lark.lexer import Token
 
-from turing_complete_interface.logic_nodes import CombinedLogicNode, InputPin, OutputPin, Wire, NodePin
+from turing_complete_interface.logic_nodes import CombinedLogicNode, InputPin, OutputPin, Wire, NodePin, LogicNodeType
 from turing_complete_interface.tc_components import get_component
 
 parser = Lark(r"""
