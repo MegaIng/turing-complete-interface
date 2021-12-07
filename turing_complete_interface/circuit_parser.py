@@ -296,17 +296,24 @@ CUSTOM = (30, 165, 174)
 
 
 def get_path():
-    match sys.platform:
-        case "Windows" | "win32":
-            base_path = Path(os.environ["APPDATA"], r"Godot\app_userdata\Turing Complete")
+    match sys.platform.lower():
+        case "windows" | "win32":
+            potential_paths = [Path(os.path.expandvars(r"%APPDATA%\Godot\app_userdata\Turing Complete"))]
         case "darwin":
-            base_path = Path("~/Library/Application Support/Godot/app_userdata/Turing Complete").expanduser()
-        case "Linux":
-            base_path = Path("~/.local/share/godot/app_userdata/Turing Complete").expanduser()
+            potential_paths = [Path("~/Library/Application Support/Godot/app_userdata/Turing Complete").expanduser()]
+        case "linux":
+            potential_paths = [
+                Path("~/.local/share/godot/app_userdata/Turing Complete").expanduser(),
+                # for wsl
+                Path(os.path.expandvars("/mnt/c/Users/${USER}/AppData/Roaming/godot/app_userdata/Turing Complete/")),
+            ]
         case _:
             print(f"Don't know where to find Turing Complete save on {sys.platform=}")
             return None
-    if not base_path.exists():
+    for base_path in potential_paths:
+        if base_path.exists():
+            break
+    else:
         print("You need Turing Complete installed to use everything here")
         return None
     return base_path
