@@ -39,8 +39,10 @@ class TruthTable:
                 return '1'
             elif v is False:
                 return '0'
-            else:
+            elif v is None:
                 return 'x'
+            else:
+                return str(v)
 
         return ' ' + ' | '.join(map(get_symbol, ins)) + ' || ' + ' | '.join(map(get_symbol, outs)) + ' '
 
@@ -160,6 +162,11 @@ class TruthTable:
             for i, ov in enumerate(self.out_vars)
         )
 
+    def fill_dont_cares(self):
+        for e in product((False, True), repeat=len(self.in_vars)):
+            if not any(self.get(e)):
+                self.cares[e] = (None,) * len(self.out_vars)
+
     def to_csv(self):
         def s(v):
             if isinstance(v, str):
@@ -182,7 +189,78 @@ class TruthTable:
         def key(t):
             return tuple({None: -1, False: 0, True: 1}[v] for v in t[1])
 
-        return ((k, (i for i, _ in v)) for k,v in groupby(sorted(self.cares.items(), key=key), key=key))
+        return ((k, (i for i, _ in v)) for k, v in groupby(sorted(self.cares.items(), key=key), key=key))
+
+    def to_espresso(self, include_names: bool = False):
+        out = [
+            f".i {len(self.in_vars)}",
+            f".o {len(self.out_vars)}",
+        ]
+        if include_names:
+            out += [
+                f".ilb {' '.join(self.in_vars)}",
+                f".ob {' '.join(self.out_vars)}",
+            ]
+        out += [
+            '.type fdr',
+            f'.p {len(self.cares)}'
+        ]
+
+        def entry(vs):
+            return ''.join({None: '-', False: '0', True: '1'}[v] for v in vs)
+
+        for entries, result in self.cares.items():
+            out.append(f'{entry(entries)} {entry(result)}')
+        out.append('.e')
+        return '\n'.join(out)
+
+    @classmethod
+    def from_espresso(cls, text: str):
+        in_vars = None
+        out_vars = None
+        cares = {}
+        for line in text.splitlines():
+            line = line.strip()
+            if line.startswith('#'):
+                continue
+            if line.startswith('.'):
+                match line.split():
+                    case '.i', n:
+                        assert in_vars is None, (in_vars, line)
+                        in_vars = [f'i{i}' for i in range(int(n))]
+                    case '.o', n:
+                        assert out_vars is None, (out_vars, line)
+                        out_vars = [f'o{i}' for i in range(int(n))]
+                    case ('.p' | '.e' | ('.p', _)):
+                        pass
+                    case _:
+                        print(f"Unknown command line {line!r}, ignoring")
+            elif in_vars is not None and out_vars is not None:
+                current = []
+                in_values = None
+                out_values = None
+                for c in line:
+                    if c in '01-':
+                        current.append({'0': False, '1': True, '-': None}[c])
+                        if in_values is None:
+                            if len(current) == len(in_vars):
+                                in_values = current
+                                current = []
+                        elif len(current) == len(out_vars):
+                            out_values = current
+                            break
+                else:
+                    raise ValueError(line)
+                cares[tuple(in_values)] = tuple(out_values)
+        return cls(tuple(in_vars), tuple(out_vars), cares)
+
+    def get_ord(self, ins) -> tuple[bool | None, ...]:
+        out = [False] * len(self.out_vars)
+        for i, r in self.get(ins):
+            for j, v in enumerate(r):
+                if v:
+                    out[j] = True
+        return tuple(out)
 
 
 @dataclass
@@ -290,6 +368,9 @@ class LUT:
             return map(lambda t: (self.decode_in(t[0]), self.decode_out(t[1])), self.truth.get(in_bits))
         except Exception as e:
             raise ValueError(f"Can't get {inputs}") from e
+
+    def get_ord(self, inputs):
+        return self.decode_out(self.truth.get_ord(self.encode_in(inputs)))
 
 
 @dataclass
