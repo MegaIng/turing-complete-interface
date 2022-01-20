@@ -162,6 +162,24 @@ class TruthTable:
             for i, ov in enumerate(self.out_vars)
         )
 
+    @classmethod
+    def join(cls, base: TruthTable, *instances: TruthTable):
+        assert all(base.in_vars == inst.in_vars for inst in instances)
+        out_vars = []
+        indices = []
+        for inst in (base, *instances):
+            indices.append(len(out_vars))
+            out_vars.extend(inst.out_vars)
+        cares = {}
+        for ind, inst in zip(indices, (base, *instances)):
+            for ins, outs in inst.cares.items():
+                if ins not in cares:
+                    cares[ins] = [False]*len(out_vars)
+                cares[ins][ind: ind + len(outs)] = outs
+        for ins, outs in cares.items():
+            cares[ins] = tuple(outs)
+        return cls(base.in_vars, tuple(out_vars), cares)
+
     def fill_dont_cares(self):
         for e in product((False, True), repeat=len(self.in_vars)):
             if not any(self.get(e)):

@@ -2,3 +2,4 @@ recursive-include turing_complete_interface *.spec
 include turing_complete_interface/tc_components.json
 include turing_complete_interface/save_monger.nim
 include turing_complete_interface/verilog_components.json
+include turing_complete_interface/level_layouts.json
