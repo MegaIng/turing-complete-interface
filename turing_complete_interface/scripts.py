@@ -116,7 +116,6 @@ def show_circuit(circuit: Circuit, no_simulation=False):
 
 
 def lut_from_bytes(raw: bytes, in_bits: int, out_bits: int):
-    assert out_bits == 8, "Different out sizes not supported"
     lut = LUT((LUTVariable("address", in_bits),), (LUTVariable("out", out_bits),))
     for i, v in enumerate(raw):
         if i > 2 ** in_bits:
