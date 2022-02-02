@@ -9,22 +9,6 @@ from .circuit_parser import Circuit, GateReference, GateShape, Pos
 
 
 
-def build_connections(circuit: Circuit) -> dict[Pos, set[Pos]]:
-    connections: defaultdict[Pos, set[Pos]] = defaultdict(set)
-    for wire in circuit.wires:
-        if len(wire.positions) > 1:
-            a, b = connections[wire.positions[0]], connections[wire.positions[-1]]
-            if a is b:
-                continue
-            assert a.isdisjoint(b)
-            a.update({wire.positions[0], wire.positions[-1]})
-            a.update(b)
-            connections[wire.positions[-1]] = a
-            for p in b:
-                connections[p] = a
-    return connections
-
-
 @dataclass
 class PinInfo:
     gate_ref: GateReference
@@ -68,7 +52,7 @@ class PinInfo:
 
 def build_connected_groups(circuit: Circuit) -> tuple[dict[str, LogicNodeType], list[list[PinInfo]], list[PinInfo],
                                                       dict[str, InputPin], dict[str, OutputPin]]:
-    connections = {p: frozenset(ps) for p, ps in build_connections(circuit).items()}
+    connections = {p: frozenset(ps) for p, ps in circuit.connections.items()}
     connected_groups: defaultdict[frozenset[Pos], list[PinInfo]] = defaultdict(list)
     nodes = {}
     missing_pins = []

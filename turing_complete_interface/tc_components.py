@@ -251,7 +251,7 @@ def load_components():
                 name,
                 color,
                 {
-                    pn: CircuitPin(pd["pos"], pd["type"] == "input", pd["size"] == "byte", pd.get("is_delayed", False))
+                    pn: CircuitPin(pd["pos"], pd["type"] == "input", pd["size"] == "byte", pd.get("is_delayed", False), pn)
                     for pn, pd in d["pins"].items()
                 },
                 d["blocks"],
@@ -377,8 +377,11 @@ def get_custom_component(custom_data: str | int, no_node: bool = False):
     return ref
 
 
-def get_component(gate_name: str, custom_data: str | int, no_node: bool = False) -> tuple[
-    GateShape, LogicNodeType | None]:
+def get_component(gate_name: str | GateReference, custom_data: str | int = None, no_node: bool = False) \
+        -> tuple[GateShape, LogicNodeType | None]:
+    if isinstance(gate_name, GateReference):
+        custom_data = gate_name.custom_id if gate_name.name == "Custom" else gate_name.custom_data
+        gate_name = gate_name.name
     if gate_name == "Custom":
         return get_custom_component(custom_data, no_node).get(no_node)
     s, n = std_components[gate_name]

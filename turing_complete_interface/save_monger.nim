@@ -3,7 +3,9 @@ import strutils, std/hashes
 
 #{.warning[HoleEnumConv]: off.}
 
-# The order of this enum determines the order in the component panel
+const FORMAT_VERSION* = 1.uint8
+const TELEPORT_WIRE   = 0b0010_0000'u8
+
 type component_kind* = enum
   Error                   = 0
   Off                     = 1
@@ -18,8 +20,8 @@ type component_kind* = enum
   Nor                     = 10
   Xor                     = 11
   Xnor                    = 12
-  Counter                 = 13
-  VirtualCounter          = 14
+  ByteCounter             = 13
+  VirtualByteCounter      = 14
   QwordCounter            = 15
   VirtualQwordCounter     = 16
   Ram                     = 17
@@ -37,9 +39,9 @@ type component_kind* = enum
   QwordRegister           = 29
   VirtualQwordRegister    = 30
   ByteSwitch              = 31
-  Mux                     = 32
-  Demux                   = 33
-  BiggerDemux             = 34
+  ByteMux                 = 32
+  Decoder1                = 33
+  Decoder3                = 34
   ByteConstant            = 35
   ByteNot                 = 36
   ByteOr                  = 37
@@ -49,8 +51,8 @@ type component_kind* = enum
   ByteLessU               = 41
   ByteLessI               = 42
   ByteNeg                 = 43
-  ByteAdd2                = 44
-  ByteMul2                = 45
+  ByteAdd                 = 44
+  ByteMul                 = 45
   ByteSplitter            = 46
   ByteMaker               = 47
   QwordSplitter           = 48
@@ -64,8 +66,8 @@ type component_kind* = enum
   WaveformGenerator       = 56
   HttpClient              = 57
   AsciiScreen             = 58
-  Keyboard                = 59
-  FileInput               = 60
+  Keypad                  = 59
+  FileRom                 = 60
   Halt                    = 61
   CircuitCluster          = 62
   Screen                  = 63
@@ -100,8 +102,34 @@ type component_kind* = enum
   Custom                  = 92
   VirtualCustom           = 93
   QwordProgram            = 94
+  DelayBuffer             = 95
+  VirtualDelayBuffer      = 96
+  Console                 = 97
+  ByteShl                 = 98
+  ByteShr                 = 99
 
-const virtual_kinds* = [VirtualCustom, VirtualRegister, VirtualQwordRegister, VirtualBitMemory, VirtualCounter, VirtualQwordCounter, VirtualStack, VirtualRam, VirtualQwordRam, VirtualRegisterRedPlus, VirtualRegisterRed]
+  QwordConstant           = 100
+  QwordNot                = 101
+  QwordOr                 = 102
+  QwordAnd                = 103
+  QwordXor                = 104
+  QwordNeg                = 105
+  QwordAdd                = 106
+  QwordMul                = 107
+  QwordEqual              = 108
+  QwordLessU              = 109
+  QwordLessI              = 110
+  QwordShl                = 111
+  QwordShr                = 112
+  QwordMux                = 113
+  QwordSwitch             = 114
+
+  StateBit                = 115
+  StateByte               = 116
+
+const VIRTUAL_KINDS*  = [VirtualDelayBuffer, VirtualCustom, VirtualRegister, VirtualQwordRegister, VirtualBitMemory, VirtualByteCounter, VirtualQwordCounter, VirtualStack, VirtualRam, VirtualQwordRam, VirtualRegisterRedPlus, VirtualRegisterRed]
+const CUSTOM_INPUTS*  = [Input1, Input1B, InputQword]
+const CUSTOM_OUTPUTS* = [Output1, Output1B, OutputQword]
 
 type circuit_kind* = enum
   ck_bit
@@ -119,18 +147,28 @@ type point* = object
   x*: int16
   y*: int16
 
+const DIRECTIONS = [
+  point(x: 1, y: 0),
+  point(x: 1, y: 1),
+  point(x: 0, y: 1),
+  point(x: -1, y: 1),
+  point(x: -1, y: 0),
+  point(x: -1, y: -1),
+  point(x: 0, y: -1),
+  point(x: 1, y: -1),
+]
+
 type parse_component* = object
   kind*: component_kind
   position*: point
   rotation*: uint8
-  permanent_id*: uint32
+  permanent_id*: int
   custom_string*: string
   custom_id*: int
-  program_name*: string # If this has len 0, we use program_data instead
-  program_data*: seq[uint8]
+  program_name*: string
 
 type parse_circuit* = object
-  permanent_id*: uint32
+  permanent_id*: int
   path*: seq[point]
   kind*: circuit_kind
   color*: uint8
@@ -147,6 +185,14 @@ type parse_result* = object
   clock_speed*: uint32
   dependencies*: seq[int]
   description*: string
+  unpacked*: bool
+  camera_position*: point
+
+proc `+`*(a: point, b: point): point =
+  return point(x: a.x + b.x, y: a.y + b.y)
+
+proc `-`*(a: point, b: point): point =
+  return point(x: a.x - b.x, y: a.y - b.y)
 
 proc to_string*(str: seq[uint8]): string =
   result = newStringOfCap(len(str))
@@ -160,12 +206,12 @@ proc to_bytes*(input: string): seq[uint8] =
 
 proc file_get_bytes*(file_name: string): seq[uint8] =
   var file = open(file_name)
-  defer: file.close
 
   let len = getFileSize(file)
   var buffer = newSeq[uint8](len)
   if len == 0: return buffer
   discard file.readBytes(buffer, 0, len)
+  file.close()
   return buffer
 
 # Backwards compatability November 2021
@@ -173,7 +219,7 @@ proc to_custom_id*(input: string): int =
   var name = input
   name = name.split('/')[^1]
   name = name.split('\\')[^1]
-  return abs(hash(input))
+  return abs(hash(name))
 
 proc get_bool*(input: seq[uint8], i: var int): bool =
   result = input[i] != 0
@@ -205,6 +251,9 @@ proc get_u16*(input: seq[uint8], i: var int): uint16 =
             input[i+1].uint16 shl 8
   i += 2
 
+proc get_i16*(input: seq[uint8], i: var int): int16 =
+  result = cast[int16](get_u16(input, i))
+
 proc get_u8*(input: seq[uint8], i: var int): uint8 =
   result = input[i]
   i += 1
@@ -225,14 +274,9 @@ proc get_string*(input: seq[uint8], i: var int): string =
 
 proc get_point*(input: seq[uint8], i: var int): point =
   return point(
-    x: get_i8(input, i).int16,
-    y: get_i8(input, i).int16
+    x: get_i16(input, i),
+    y: get_i16(input, i)
   )
-
-proc get_seq_point*(input: seq[uint8], i: var int): seq[point] =
-  let len = get_int(input, i)
-  for j in 0..len - 1:
-    result.add(get_point(input, i))
 
 proc get_component*(input: seq[uint8], i: var int): parse_component =
   try: # Only fails for obsolete components (deleted enum values)
@@ -240,7 +284,7 @@ proc get_component*(input: seq[uint8], i: var int): parse_component =
   except: discard
   result.position = get_point(input, i)
   result.rotation = get_u8(input, i)
-  result.permanent_id = get_u32(input, i)
+  result.permanent_id = get_int(input, i)
   result.custom_string = get_string(input, i)
   if result.kind in [Program1, Program2, Program3, Program4, QwordProgram]:
     result.program_name = get_string(input, i)
@@ -255,90 +299,53 @@ proc get_components*(input: seq[uint8], i: var int): seq[parse_component] =
     result.add(comp)
 
 proc get_circuit*(input: seq[uint8], i: var int): parse_circuit =
-  result.permanent_id = get_u32(input, i)
+  result.permanent_id = get_int(input, i)
   result.kind = circuit_kind(get_u8(input, i))
   result.color = get_u8(input, i)
   result.comment = get_string(input, i)
-  result.path = get_seq_point(input, i)
+
+  #[
+    Wire paths encoding rules:
+    1. The wire starts with a point: (x: int16, y: int16).
+    2. After this follow 1 or more segments (3 bit direction, 5 bit length)
+    3. We end once a 0 length segment is encountered (0 byte)
+  ]#
+
+  result.path.add(get_point(input, i))
+
+  var segment = get_u8(input, i)
+
+  if segment == TELEPORT_WIRE:
+    result.path.add(get_point(input, i))
+    return
+
+  var length_left = (segment and 0b0001_1111).int
+  while length_left != 0:
+    let difference = DIRECTIONS[segment shr 5]
+
+    while length_left > 0:
+      result.path.add(result.path[^1] + difference)
+      length_left -= 1
+
+    segment = get_u8(input, i)
+    length_left = (segment and 0b0001_1111).int
 
 proc get_circuits*(input: seq[uint8], i: var int): seq[parse_circuit] =
   let len = get_int(input, i)
   for j in 0..len - 1:
     result.add(get_circuit(input, i))
 
-proc parse_state*(input: seq[uint8], meta_only: bool = false): parse_result {.exportpy.} =
+proc parse_state*(input: seq[uint8], meta_only: bool = false): parse_result  {. exportpy .} =
   result.nand = 99999.uint32
   result.delay = 99999.uint32
-  result.clock_speed = 1000.uint32
+  result.clock_speed = 100000.uint32
   result.menu_visible = true
+
   if input.len == 0: return
 
   var version = input[0]
 
   case version:
-    of 48: # 0 in ascii
-      if not meta_only:
-        let parts = input.to_string.split("|")
-        if parts.len notin [4, 5]:
-          return
-        if parts[1] != "":
-          let component_strings = parts[1].split(";")
-          for comp_string in component_strings:
-            var comp_parts = comp_string.split("`")
-
-            if comp_parts.len != 6:
-              continue
-
-            try:
-              result.components.add(parse_component(
-                kind: parseEnum[component_kind](comp_parts[0]),
-                position: point(x: parseInt(comp_parts[1]).int16, y: parseInt(comp_parts[2]).int16),
-                rotation: parseInt(comp_parts[3]).uint8,
-                permanent_id: parseInt(comp_parts[4]).uint32,
-                custom_string: comp_parts[5]
-              ))
-              if result.components[^1].kind == Custom:
-                try:
-                  result.components[^1].custom_id = parseInt(result.components[^1].custom_string)
-                except:
-                  result.components[^1].custom_id = to_custom_id(result.components[^1].custom_string) # Old school name
-            except:
-              discard
-
-        var next_circuit_id = 1.uint32
-        if parts[2] != "":
-          let circuits_strings = parts[2].split(";")
-
-          for circ_string in circuits_strings:
-            let circ_parts = circ_string.split("`")
-
-            if circ_parts.len != 4:
-              continue
-
-            var path = newSeq[point]()
-            var x = 0.int16
-            var i = 0
-            if circ_parts[3] != "":
-              try:
-                for n in circ_parts[3].split(","):
-                  if i mod 2 == 0:
-                    x = parseInt(n).int16
-                  else:
-                    path.add(point(x: x, y: parseInt(n).int16))
-                  i += 1
-              except:
-                continue
-
-              result.circuits.add(parse_circuit(
-                permanent_id: next_circuit_id,
-                path: path,
-                kind: circuit_kind(parseInt(circ_parts[0])),
-                color: parseInt(circ_parts[1]).uint8,
-                comment: circ_parts[2],
-              ))
-
-              next_circuit_id += 1
-
     of 49: # 1 in ascii
       let parts = input.to_string.split("|")
       if parts.len notin [4, 5]:
@@ -368,7 +375,7 @@ proc parse_state*(input: seq[uint8], meta_only: bool = false): parse_result {.ex
                 kind: parseEnum[component_kind](comp_parts[0]),
                 position: point(x: parseInt(comp_parts[1]).int16, y: parseInt(comp_parts[2]).int16),
                 rotation: parseInt(comp_parts[3]).uint8,
-                permanent_id: parseInt(comp_parts[4]).uint32,
+                permanent_id: parseInt(comp_parts[4]).uint32.int,
                 custom_string: comp_parts[5]
               ))
               if result.components[^1].kind == Custom:
@@ -399,7 +406,7 @@ proc parse_state*(input: seq[uint8], meta_only: bool = false): parse_result {.ex
               i += 1
 
             result.circuits.add(parse_circuit(
-              permanent_id: parseInt(circ_parts[0]).uint32,
+              permanent_id: parseInt(circ_parts[0]),
               kind: circuit_kind(parseInt(circ_parts[1])),
               color: parseInt(circ_parts[2]).uint8,
               comment: circ_parts[3],
@@ -417,6 +424,69 @@ proc parse_state*(input: seq[uint8], meta_only: bool = false): parse_result {.ex
       result.nesting_level = get_u8(input, i)
       result.dependencies = get_seq_i64(input, i)
       result.description = get_string(input, i)
+
+      if not meta_only:
+        # Old versions of these procs
+        proc get_point(input: seq[uint8], i: var int): point =
+          return point(
+            x: get_i8(input, i).int16,
+            y: get_i8(input, i).int16
+          )
+
+        proc get_seq_point(input: seq[uint8], i: var int): seq[point] =
+          let len = get_int(input, i)
+          for j in 0..len - 1:
+            result.add(get_point(input, i))
+
+        proc get_component(input: seq[uint8], i: var int): parse_component =
+          try: # Only fails for obsolete components (deleted enum values)
+            result = parse_component(kind: component_kind(get_u16(input, i).int))
+          except: discard
+          result.position = get_point(input, i)
+          result.rotation = get_u8(input, i)
+          result.permanent_id = get_u32(input, i).int
+          result.custom_string = get_string(input, i)
+          if result.kind in [Program1, Program2, Program3, Program4, QwordProgram]:
+            result.program_name = get_string(input, i)
+          elif result.kind == Custom:
+            result.custom_id = get_int(input, i)
+
+        proc get_components(input: seq[uint8], i: var int): seq[parse_component] =
+          let len = get_int(input, i)
+          for j in 0..len - 1:
+            let comp = get_component(input, i)
+            if comp.kind == Error: continue
+            result.add(comp)
+
+        proc get_circuit(input: seq[uint8], i: var int): parse_circuit =
+          result.permanent_id = get_u32(input, i).int
+          result.kind = circuit_kind(get_u8(input, i))
+          result.color = get_u8(input, i)
+          result.comment = get_string(input, i)
+          result.path = get_seq_point(input, i)
+
+        proc get_circuits(input: seq[uint8], i: var int): seq[parse_circuit] =
+          let len = get_int(input, i)
+          for j in 0..len - 1:
+            result.add(get_circuit(input, i))
+
+        result.components = get_components(input, i)
+        result.circuits = get_circuits(input, i)
+
+    of 1:
+      var i = 1 # 0th byte is version
+
+      result.save_version = get_int(input, i)
+      result.nand = get_u32(input, i)
+      result.delay = get_u32(input, i)
+      result.menu_visible = get_bool(input, i)
+      result.clock_speed = get_u32(input, i)
+      result.nesting_level = get_u8(input, i)
+      result.dependencies = get_seq_i64(input, i)
+      result.description = get_string(input, i)
+      result.unpacked = get_bool(input, i)
+      result.camera_position = get_point(input, i)
+      discard get_bool(input, i) # Has cached design, for future custom component lazy loading
 
       if not meta_only:
         result.components = get_components(input, i)
@@ -450,6 +520,10 @@ proc add_bytes*(arr: var seq[uint8], input: uint16) =
   arr.add(cast[uint8]((input shr 0)  and 0xff))
   arr.add(cast[uint8]((input shr 8)  and 0xff))
 
+proc add_bytes*(arr: var seq[uint8], input: int16) =
+  arr.add(cast[uint8]((input shr 0)  and 0xff))
+  arr.add(cast[uint8]((input shr 8)  and 0xff))
+
 proc add_bytes*(arr: var seq[uint8], input: uint8) =
   arr.add(input)
 
@@ -460,10 +534,15 @@ proc add_bytes*(arr: var seq[uint8], input: circuit_kind) =
   arr.add(ord(input).uint8)
 
 proc add_bytes*(arr: var seq[uint8], input: point) =
-  arr.add(cast[uint8](input.x.int8))
-  arr.add(cast[uint8](input.y.int8))
+  arr.add_bytes(input.x)
+  arr.add_bytes(input.y)
 
 proc add_bytes*(arr: var seq[uint8], input: seq[int]) =
+  arr.add_bytes(input.len)
+  for i in input:
+    arr.add_bytes(i)
+
+proc add_bytes*(arr: var seq[uint8], input: seq[uint64]) =
   arr.add_bytes(input.len)
   for i in input:
     arr.add_bytes(i)
@@ -473,10 +552,46 @@ proc add_bytes*(arr: var seq[uint8], input: string) =
   for c in input:
     arr.add_bytes(ord(c).uint8)
 
-proc add_bytes*(arr: var seq[uint8], input: seq[point]) =
-  arr.add_bytes(input.len)
-  for p in input:
-    arr.add_bytes(p)
+proc add_path*(arr: var seq[uint8], path: seq[point]) =
+  #[
+    Wire paths encoding rules:
+    1. The wire starts with a point: (x: int16, y: int16).
+    2. After this follow 1 or more segments (3 bit direction, 5 bit length)
+    3. We end once a 0 length segment is encountered (0 byte)
+  ]#
+
+  arr.add_bytes(path[0])
+
+  var offset = 0
+
+  while offset < path.high:
+    let original_direction = DIRECTIONS.find(path[offset + 1] - path[offset])
+
+    if original_direction == -1:
+      if path.len == 2:
+        # Special case for players who want to generate "teleport" wires
+        arr.add_bytes(TELEPORT_WIRE)
+        arr.add_bytes(path[1])
+        return
+      break
+
+    # We have 5 bits to save the length, so max length is 31
+    let max_length = min(path.high, 0b0001_1111)
+    var length = 1
+    var direction = original_direction
+
+    while offset + length < max_length:
+      direction = DIRECTIONS.find(path[offset + length + 1] - path[offset + length])
+      if direction != original_direction: break
+      length += 1
+
+    let segment = ((original_direction shl 5) or length).uint8
+    arr.add_bytes(segment)
+
+    offset += length
+
+  # Length 0 segment, ends the wire
+  arr.add_bytes(0.uint8)
 
 proc add_bytes(arr: var seq[uint8], component: parse_component) =
   arr.add_bytes(component.kind)
@@ -498,9 +613,9 @@ proc add_bytes(arr: var seq[uint8], circuit: parse_circuit) =
   arr.add_bytes(circuit.kind)
   arr.add_bytes(circuit.color)
   arr.add_bytes(circuit.comment)
-  arr.add_bytes(circuit.path)
+  arr.add_path(circuit.path)
 
-proc state_to_binary*(save_version: int, components: seq[parse_component], circuits: seq[parse_circuit], nand: uint32, delay: uint32, menu_visible: bool, nesting_level: uint8, description: string): seq[uint8]  {.exportpy.} =
+proc state_to_binary*(save_version: int, components: seq[parse_component], circuits: seq[parse_circuit], nand: uint32, delay: uint32, menu_visible: bool, clock_speed: uint32, nesting_level: uint8, description: string, unpacked: bool, camera_position: point): seq[uint8] {. exportpy .} =
   var dependencies: seq[int]
 
   var components_to_save: seq[int]
@@ -509,20 +624,21 @@ proc state_to_binary*(save_version: int, components: seq[parse_component], circu
       dependencies.add(component.custom_id)
 
     if component.kind in [CircuitCluster, VirtualCustom]: continue
-    if component.kind in virtual_kinds: continue
+    if component.kind in VIRTUAL_KINDS: continue
     components_to_save.add(id)
 
-  result.add_bytes(0.uint8) # Format version
+  result.add_bytes(FORMAT_VERSION)
   result.add_bytes(save_version)
   result.add_bytes(nand)
   result.add_bytes(delay)
   result.add_bytes(menu_visible)
-  result.add_bytes(1000.uint32) # Eventually save clock speed here, needed for sharable sandbox schematics
+  result.add_bytes(clock_speed)
   result.add_bytes(nesting_level)
-
   result.add_bytes(dependencies)
-
   result.add_bytes(description)
+  result.add_bytes(unpacked)
+  result.add_bytes(camera_position)
+  result.add_bytes(false) # Has cached design, for custom component lazy loading
 
   result.add_bytes(components_to_save.len)
   for id in components_to_save:
@@ -533,4 +649,4 @@ proc state_to_binary*(save_version: int, components: seq[parse_component], circu
     result.add_bytes(circuit)
 
 proc is_virtual*(component: component_kind): bool {. exportpy .} =
-  return component in virtual_kinds
+  return component in VIRTUAL_KINDS

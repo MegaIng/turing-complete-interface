@@ -398,8 +398,8 @@ NAND_2W1 = DirectLogicNodeType(
 )
 
 
-def _sr_latch(inputs: frozendict[str, frozenbitarray], state: Optional[frozenbitarray],
-              delayed: bool) -> tuple[frozendict[str, Optional[frozenbitarray]], Optional[frozenbitarray]]:
+def _sr_latch_delayed(inputs: frozendict[str, frozenbitarray], state: Optional[frozenbitarray],
+                      delayed: bool) -> tuple[frozendict[str, Optional[frozenbitarray]], Optional[frozenbitarray]]:
     assert state is not None, state
     if delayed:
         new_state = bitarray(state, endian="little")
@@ -416,10 +416,38 @@ def _sr_latch(inputs: frozendict[str, frozenbitarray], state: Optional[frozenbit
             "pos": state, "neg": ~state
         }), None
 
+SR_LATCH_DELAYED = DirectLogicNodeType(
+    "SR_LATCH_DELAYED",
+    frozendict({"write_pos": InputPin(1, True), "write_neg": InputPin(1, True)}),
+    frozendict({"neg": OutputPin(1), "pos": OutputPin(1)}), 1,
+    _sr_latch_delayed
+)
+
+
+def _sr_latch(inputs: frozendict[str, frozenbitarray], state: Optional[frozenbitarray],
+              delayed: bool) -> tuple[frozendict[str, Optional[frozenbitarray]], Optional[frozenbitarray]]:
+    assert state is not None, state
+    match inputs["write_pos"][0], inputs["write_neg"][0]:
+        case (0, 0):
+            rv = state, ~state
+            new_state = state
+        case (1, 1):
+            rv = _false
+            new_state = state
+        case (1, 0):
+            rv = _true, _false
+            new_state = _true
+        case (0, 1):
+            rv = _false, _true
+            new_state = _false
+        case _:
+            raise ValueError(inputs, inputs["write_pos"][0], inputs["write_neg"][0])
+    return frozendict({"pos": rv[0], "neg": rv[1]}), new_state
+
 
 SR_LATCH = DirectLogicNodeType(
     "SR_LATCH",
-    frozendict({"write_pos": InputPin(1, True), "write_neg": InputPin(1, True)}),
+    frozendict({"write_pos": InputPin(1, False), "write_neg": InputPin(1, False)}),
     frozendict({"neg": OutputPin(1), "pos": OutputPin(1)}), 1,
     _sr_latch
 )
@@ -437,6 +465,7 @@ CONST = DirectLogicNodeType(
 
 builtins_gates = {
     NAND_2W1.name: NAND_2W1,
+    SR_LATCH_DELAYED.name: SR_LATCH_DELAYED,
     SR_LATCH.name: SR_LATCH,
     CONST.name: CONST
 }
@@ -455,6 +484,6 @@ def build_or(*names: str, bit_size: int = 1, gate_name="OR_{wire_count}W{bit_siz
     )
 
 
-for n in range(2, 32 + 1):
+for n in range(2, 64 + 1):
     g = build_or(*map(str, range(n)))
     builtins_gates[g.name] = g

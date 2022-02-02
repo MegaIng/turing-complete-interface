@@ -230,7 +230,16 @@ verilog_modules = {
 }
 
 
-def generate_verilog(node: CombinedLogicNode) -> str:
+@dataclass
+class VerilogGenerator:
+    generated_components: dict[LogicNodeType, tuple[str, str]]
+
+    def generate_node(self, node: CombinedLogicNode, name: str = None) -> str:
+        pass
+
+
+
+def generate_verilog(node: CombinedLogicNode, name: str) -> str:
     # We take the easy way out and generate one wire for each port of each node
     # We then generate assigns based on actual wires.
     # This might generate unnecessary wires, but later processors can deal with that.

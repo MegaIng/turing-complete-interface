@@ -1,5 +1,5 @@
 from os import PathLike
-from typing import Literal, overload
+from typing import Literal, overload, Iterable
 
 from turing_complete_interface.circuit_builder import build_circuit, IOPosition, layout_with_pydot
 from turing_complete_interface.circuit_compiler import build_gate
@@ -55,6 +55,12 @@ def logic_expression_to_node(expression: str) -> LogicNodeType:
 
 def verilog_to_node(verilog: str, module_name: _NameSources | str = USE_MODULE_NAME):
     return parse_verilog(verilog)
+
+
+def circuit_to_node(circuit: Circuit, name=None) -> LogicNodeType:
+    if name is None:
+        name = selected_level
+    return build_gate(name, circuit)
 
 
 def node_to_verilog(node: LogicNodeType, top_module_name: str = None) -> str:
@@ -115,11 +121,10 @@ def show_circuit(circuit: Circuit, no_simulation=False):
                  get_layout(selected_level).new_space())
 
 
-def lut_from_bytes(raw: bytes, in_bits: int, out_bits: int):
+def lut_from_ints(raw: Iterable[int], in_bits: int, out_bits: int):
     lut = LUT((LUTVariable("address", in_bits),), (LUTVariable("out", out_bits),))
     for i, v in enumerate(raw):
         if i > 2 ** in_bits:
             break
         lut.set(i, v)
     return lut
-

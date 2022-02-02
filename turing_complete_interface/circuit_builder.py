@@ -2,11 +2,13 @@ from __future__ import annotations
 
 import json
 from dataclasses import dataclass, field
+from math import inf, sqrt
+from queue import PriorityQueue
 from typing import Any, Callable, Collection, TYPE_CHECKING, Iterable, Literal
 
 from bitarray import bitarray
 
-from turing_complete_interface.circuit_parser import Circuit, GateReference, GateShape, CircuitWire, CircuitPin
+from turing_complete_interface.circuit_parser import Circuit, GateReference, GateShape, CircuitWire, CircuitPin, Pos
 from turing_complete_interface.truth_table import Atom
 from turing_complete_interface.logic_nodes import CombinedLogicNode, NodePin
 from turing_complete_interface.tc_components import get_component, rev_components
@@ -97,6 +99,95 @@ class Space:
 
     def is_filled(self, x: int, y: int):
         return self._taken_spaces[(y - self.y) * self.w + (x - self.x)]
+
+    def clear(self):
+        self._taken_spaces.clear()
+        self._placed_boxes.clear()
+        self._protected.clear()
+
+
+@dataclass
+class PathFinder:
+    circuit: Circuit
+    area: tuple[int, int, int, int]
+    taken: list[list[Literal['gate', 'pin', 'wire_end'] | None]]
+
+    def add_gate(self, gate_ref: GateReference, shape: GateShape):
+        for bx, by in shape.blocks:
+            p = gate_ref.translate((bx, by))
+            self.taken[p[0] - self.area[0]][p[1] - self.area[1]] = 'gate'
+        for pin in shape.pins.values():
+            p = gate_ref.translate(pin.pos)
+            self.taken[p[0] - self.area[0]][p[1] - self.area[1]] = 'pin'
+        if shape.big_shape:
+            for bx in range(shape.big_shape.tl[0], shape.big_shape.br[0]):
+                for by in range(shape.big_shape.tl[1], shape.big_shape.br[1]):
+                    p = gate_ref.translate((bx, by))
+                    self.taken[p[0] - self.area[0]][p[1] - self.area[1]] = 'gate'
+
+    def add_wire_end(self, pos: Pos):
+        self.taken[pos[0] - self.area[0]][pos[1] - self.area[1]] = 'wire_end'
+
+    def reload(self):
+        self.taken = [[None] * self.area[2] for _ in range(self.area[3])]
+        for gate in self.circuit.gates:
+            shape = get_component(gate, no_node=True)[0]
+            self.add_gate(gate, shape)
+        for wire in self.circuit.wires:
+            if wire.positions:
+                self.add_wire_end(wire.positions[0])
+                self.add_wire_end(wire.positions[-1])
+
+    def path_find(self, start: Pos, end: Pos):
+        start = start[0] - self.area[0], start[1] - self.area[1]
+        end = end[0] - self.area[0], end[1] - self.area[1]
+        if self.taken[end[0]][end[1]] == "gate":
+            return None
+
+        def h(p):
+            return sqrt((p[0] - end[0]) ** 2 + (p[1] - end[1]) ** 2)
+
+        def reconstruct():
+            path = [(end[0] + self.area[0], end[1] + self.area[1])]
+            current = end
+            while current in came_from:
+                current = came_from[current]
+                path.append((current[0] + self.area[0], current[1] + self.area[1]))
+            return path
+
+        queue = PriorityQueue()
+        queue.put((0, start))
+        came_from = {}
+        path_cost = {start: 0}
+        heuristic_cost = {}
+        while not queue.empty():
+            _, (x, y) = queue.get()
+            if (x, y) == end:
+                return reconstruct()
+            for dx in (-1, 0, 1):
+                if not (0 <= x + dx < self.area[2]):
+                    continue
+                for dy in (-1, 0, 1):
+                    if not (0 <= y + dy < self.area[3]):
+                        continue
+                    if dx == dy == 0:
+                        continue
+                    np = x + dx, y + dy
+                    if self.taken[np[0]][np[1]] is not None and (np != end):
+                        continue
+                    new_cost = path_cost[x, y] + 1
+                    if new_cost < path_cost.get(np, inf):
+                        came_from[np] = x, y
+                        path_cost[np] = new_cost
+                        heuristic_cost[np] = new_cost + h(np)
+                        queue.put((heuristic_cost[np], np))
+        return None
+
+    @classmethod
+    def create(cls, circuit, area):
+        self = cls(circuit, area, [[None] * area[3] for _ in range(area[2])])
+        self.reload()
+        return self
 
 
 def build_circuit(node: CombinedLogicNode, io_positions: list[IOPosition], space: Space,

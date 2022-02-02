@@ -2,10 +2,11 @@ from __future__ import annotations
 
 import os
 import sys
+from collections import defaultdict
 from dataclasses import dataclass, field
 from math import isfinite
 from pathlib import Path
-from typing import Callable, TypedDict
+from typing import Callable, TypedDict, Literal
 
 try:
     import nimporter
@@ -39,7 +40,6 @@ class GateReference:
     custom_data: str = ""
     custom_id: int = 0
     program_name: str = ""
-    program_data: list[int] = ()
 
     def translate(self, dp: tuple[int, int]):
         dp = self.rot(dp)
@@ -63,13 +63,11 @@ class GateReference:
                  custom_string: str,
                  custom_id: int,
                  program_name: str,
-                 program_data: list[int],
                  ) -> GateReference | None:
         if save_monger.is_virtual(kind):
             return None
         return GateReference(
             kind, (position["x"], position["y"]), rotation, permanent_id, custom_string, custom_id, program_name,
-            program_data
         )
 
     def to_nim(self):
@@ -150,11 +148,18 @@ class CircuitWire:
 class Circuit:
     gates: list[GateReference]
     wires: list[CircuitWire]
+    nand: int = 99_999
+    delay: int = 99_999
     save_version: int = 0
     menu_visible: bool = True
+    clock_speed: int = 100
     nesting_level: int = 1
     description: str = ""
+    unpacked: bool = False
+    camera_position: tuple[int, int] = (0, 0)
+
     shape: GateShape | None = None
+    store_score: bool = False
     _raw_nim_data: dict = field(default_factory=dict)
 
     @classmethod
@@ -163,10 +168,15 @@ class Circuit:
         return Circuit(
             [GateReference.from_nim(**c) for c in data["components"]],
             [CircuitWire.from_nim(**c) for c in data["circuits"]],
+            data["nand"],
+            data["delay"],
             data["save_version"],
             data["menu_visible"],
+            data["clock_speed"],
             data["nesting_level"],
             data["description"],
+            data["unpacked"],
+            data["camera_position"],
             shape=None,
             _raw_nim_data=data
         )
@@ -178,11 +188,14 @@ class Circuit:
             self.save_version,
             [g.to_nim() for g in self.gates],
             [w.to_nim() for w in self.wires],
-            99_999,  # nand
-            99_999,  # delay
+            self.nand if self.store_score else 99_999,  # nand
+            self.delay if self.store_score else 99_999,  # delay
             self.menu_visible,
+            self.clock_speed,
             self.nesting_level,
             self.description,
+            self.unpacked,
+            self.camera_position,
         )
 
     def add_component(self, kind: str, pos: tuple[int, int], rotation: int = 0, **kwargs):
@@ -232,6 +245,22 @@ class Circuit:
             return (0, 0, 0, 0)
         else:
             return start_x, start_y, end_x - start_x, end_y - start_y
+
+    @property
+    def connections(self):
+        connections: defaultdict[Pos, set[Pos]] = defaultdict(set)
+        for wire in self.wires:
+            if len(wire.positions) > 1:
+                a, b = connections[wire.positions[0]], connections[wire.positions[-1]]
+                if a is b:
+                    continue
+                assert a.isdisjoint(b)
+                a.update({wire.positions[0], wire.positions[-1]})
+                a.update(b)
+                connections[wire.positions[-1]] = a
+                for p in b:
+                    connections[p] = a
+        return connections
 
 
 @dataclass
@@ -284,9 +313,13 @@ class GateShape:
         assert all((isfinite(min_x), isfinite(max_x), isfinite(min_y), isfinite(max_y))), (min_x, max_x, min_y, max_y)
         return min_x, min_y, max_x - min_x + 1, max_y - min_y + 1
 
-    def pin_position(self, gate_ref: GateReference, pin_name: str):
+    def pin_position(self, gate_ref: GateReference | Pos, pin_name: str):
+        if isinstance(gate_ref, GateReference):
+            base = gate_ref.pos
+        else:
+            base = gate_ref
         p = self.pins[pin_name]
-        return gate_ref.pos[0] + p.pos[0], gate_ref.pos[1] + p.pos[1]
+        return base[0] + p.pos[0], base[1] + p.pos[1]
 
 
 SPECIAL_RED = (206, 89, 107)

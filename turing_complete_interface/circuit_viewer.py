@@ -1,12 +1,13 @@
+from __future__ import annotations
 import json
 import os
-from abc import ABC
+from abc import ABC, abstractmethod
 from argparse import ArgumentParser
 from dataclasses import dataclass, field
 from graphlib import CycleError
 from pathlib import Path
 from pprint import pprint
-from typing import Callable
+from typing import Callable, Sequence
 
 import pygame as pg
 from bitarray import bitarray
@@ -16,10 +17,10 @@ from turing_complete_interface.circuit_builder import build_circuit, IOPosition,
 from turing_complete_interface.level_layouts import get_layout
 from turing_complete_interface.tc_assembler import assemble
 from turing_complete_interface.verilog_parser import parse_verilog
-from .circuit_compiler import build_connections, build_gate
+from .circuit_compiler import build_gate
 from .tc_components import screens, AsciiScreen, get_component, compute_gate_shape
 from . import tc_components
-from .circuit_parser import CircuitWire, Circuit, GateShape, GateReference, SCHEMATICS_PATH
+from .circuit_parser import CircuitWire, Circuit, GateShape, GateReference, SCHEMATICS_PATH, Pos
 from .logic_nodes import file_safe_name, LogicNodeType
 from .specification_tester import BitsInput
 from .world_view import WorldView
@@ -102,10 +103,11 @@ class FastBotTurtle(WorldHandler):
 @dataclass(kw_only=True)
 class CircuitView(WorldView):
     circuit: Circuit
-    extra_info: dict[tuple[int, int], dict[str, str]] = field(default_factory=dict)
+    annotations: dict[tuple[int, int], str] = field(default_factory=dict)
+    space: Space | None = None
 
     def draw_gate(self, gate: GateReference, gate_shape: GateShape,
-                  hover_text: dict[tuple[int, int], str] = None, wire_values: dict = None, highlight: bool = False):
+                  wire_values: dict = None, highlight: bool = False):
         pos = gate.pos
         if wire_values is None:
             wire_values = {}
@@ -124,8 +126,7 @@ class CircuitView(WorldView):
         for dp in gate_shape.blocks:
             p = gate.translate(dp)
             self.draw.rect(gate_shape.color, (p[0] - 0.5, p[1] - 0.5, 1, 1))
-            if hover_text is not None:
-                hover_text[p] = f"{gate.id}"
+            self.annotations[p] = f"{gate.id}"
         for name, p in gate_shape.pins.items():
             xy = gate.translate(p.pos)
             if gate_shape.is_io:
@@ -137,8 +138,7 @@ class CircuitView(WorldView):
             value = wire_values.get(pin_source, bitarray())
             self.draw.circle((255 * p.is_byte, 255 * p.is_delayed, 255 * p.is_input),
                              xy, 0.25)
-            if hover_text is not None:
-                hover_text[xy] = f"{gate.id}.{name}: {value.to01()[::-1]}"
+            self.annotations[xy] = f"{gate.id}.{name}: {value.to01()[::-1]}"
         self.draw.text((255, 255, 255), pos, gate_shape.text(gate), size=1,
                        background=((255, 0, 0) if highlight else None))
 
@@ -158,8 +158,36 @@ class CircuitView(WorldView):
                 pos = wire.positions[mid]
             self.draw.text((255, 255, 255), pos, str(wire.label), angle=dr.angle_to((1, 0)))
 
-    def draw_circuit(self):
-        pass
+    def draw_background(self):
+        for i in range(self.space.w // 8):
+            for j in range(self.space.w // 8):
+                if (i + j) % 2 == 1:
+                    c = (65, 65, 65)
+                    self.draw.rect(c, (self.space.x + i * 8 + 0.5, self.space.y + j * 8 + 0.5, 8, 8))
+        self.draw.rect((255, 0, 0), (self.space.x - 0.5, self.space.y - 0.5, self.space.w, self.space.h), width=1)
+
+    def draw_circuit(self, wire_values=None, cycle=None, connections=None):
+
+        if self.space is not None:
+            self.draw_background()
+
+        for wire in self.circuit.wires:
+            self.draw_wire(wire)
+        for gate in self.circuit.gates:
+            shape, _ = get_component(gate.name, gate.custom_data if gate.name != "Custom" else gate.custom_id, True)
+            self.draw_gate(gate, shape, wire_values, (gate.id in cycle if cycle else False))
+        # shape = compute_gate_shape(circuit, "main")
+        # draw_gate(view, GateReference("main", (0,0), 0, "-1", ""), shape)
+        p = self.s2w(pg.mouse.get_pos())
+        p = int(round(p[0])), int(round(p[1]))
+        connections = connections or self.circuit.connections
+        if p in connections:
+            for q in connections[p]:
+                self.draw.circle((255, 255, 0), q, 0.75)
+
+        self.draw.text((0, 0, 0), p, str(p), anchor="bottomleft", background=(127, 127, 127))
+        if t := self.annotations.get(p, None):
+            self.draw.text((0, 0, 0), p, t, anchor="topleft", background=(127, 127, 127))
 
 
 def translate(p):
@@ -219,7 +247,12 @@ def _space_observer(view: WorldView, space: Space):
         pg.display.update()
 
 
-class Simulator(tk.Tk):
+class ExtraWindow:
+    def extra_update(self) -> bool:
+        pass
+
+
+class Simulator(tk.Tk, ExtraWindow):
     def __init__(self, node: LogicNodeType, output_handler: WorldHandler):
         super(Simulator, self).__init__()
         self.node = node
@@ -258,6 +291,135 @@ class Simulator(tk.Tk):
         self.state = new_state
         return wire_values, None
 
+    def extra_update(self) -> bool:
+        self.update()
+
+
+@dataclass
+class Selector(ABC):
+    manager: CircuitManager
+    title: str
+    done: bool = False
+
+    @abstractmethod
+    def update(self, dt):
+        pass
+
+    @abstractmethod
+    def handle_event(self, event):
+        pass
+
+
+class SinglePinSelector(Selector):
+    pos: tuple[int, int] = None
+
+    def update(self, dt):
+        pass
+
+    def handle_event(self, event):
+        Event = pg.event.EventType
+        match event:
+            case Event(type=pg.MOUSEBUTTONDOWN, button=1, pos=pos):
+                x,y = self.manager.main.s2w(pos)
+                self.pos = int(round(x)), int(round(y))
+                self.done = True
+
+
+@dataclass
+class CircuitManager:
+    main: CircuitView
+    clock: pg.time.Clock
+    extras: Sequence[ExtraWindow] = ()
+    selector: Selector | None = None
+    running: bool = None
+
+    @classmethod
+    def create(cls, circuit: Circuit, space: Space = None, ) -> 'CircuitManager':
+        if space is None:
+            space = get_layout("").new_space()
+        pg.init()
+        screen = pg.display.set_mode((640, 480), pg.RESIZABLE)
+        view = CircuitView.centered(screen, space=space, scale_x=40, circuit=circuit)
+        return CircuitManager(
+            view, pg.time.Clock(), [],
+        )
+
+    def mainloop(self):
+        Event = pg.event.EventType
+        self.running = True
+        while self.running and (self.selector is None or not self.selector.done):
+            for extra in self.extras:
+                extra.extra_update()
+            for event in pg.event.get():
+                match event:
+                    case Event(type=pg.QUIT):
+                        self.running = False
+                    case Event(type=pg.KEYDOWN, key=pg.K_ESCAPE):
+                        self.running = False
+                    case Event(type=pg.VIDEORESIZE, size=size):
+                        screen = pg.display.set_mode(size, pg.RESIZABLE)
+                        W, H = screen.get_size()
+                    case event if self.main.handle_event(event):
+                        pass
+                    case event if self.selector is not None and self.selector.handle_event(event):
+                        pass
+                    # case event if not show_circuit and output_handler and output_handler.handle_event(event):
+                    #     pass
+                    # case Event(type=pg.KEYDOWN, key=pg.K_RETURN):
+                    #     show_circuit = not show_circuit
+                    case Event(type=pg.KEYDOWN, key=key):
+                        tc_components.last_key = key % 256
+            # Logic
+            dt = self.clock.tick()
+            self.main.update(dt)
+            if self.selector is not None:
+                self.selector.update(dt)
+            # if pg.key.get_pressed()[pg.K_SPACE]:
+            #     wire_values, cycle = simulator.step()
+            # if output_handler is not None:
+            #     output_handler.update(dt)
+
+            # Render
+            # if not show_circuit:
+            #     if output_handler is None:
+            #         try:
+            #             ascii_screen: AsciiScreen = next(iter(screens.values()))
+            #         except StopIteration:
+            #             pass
+            #         else:
+            #             screen.fill(ascii_screen.background_color)
+            #             for y in range(14):
+            #                 for x in range(18):
+            #                     i = y * 18 + x
+            #                     col, ch = ascii_screen.ascii_screen[2 * i:2 * i + 2]
+            #                     if ch != 0:
+            #                         col = (
+            #                             int(((col & 0b11100000) >> 5) * 255 / 8),
+            #                             int(((col & 0b00011100) >> 3) * 255 / 8),
+            #                             int(((col & 0b00000011) >> 0) * 255 / 4),
+            #                         )
+            #                         t = font.render(chr(ch), True, col)
+            #                         screen.blit(t, (x * (FONT_SIZE), y * (FONT_SIZE)))
+            #     else:
+            #         output_handler.draw(screen)
+            # else:
+            self.main.screen.fill((127, 127, 127))
+            self.main.draw_circuit()
+            pg.display.update()
+            if self.selector is None:
+                pg.display.set_caption(f"FPS: {self.clock.get_fps():.2f}")
+            else:
+                pg.display.set_caption(self.selector.title)
+        if not self.running:
+            pg.quit()
+            exit()
+
+    def ask_single_pin(self, title: str):
+        s = self.selector = SinglePinSelector(self, title)
+        self.mainloop()
+        self.selector = None
+        return s
+
 
 def view_circuit(circuit, node, space, output_handler: Callable[[pg.Surface], WorldHandler] = None):
     W, H = 640, 480
@@ -266,6 +428,8 @@ def view_circuit(circuit, node, space, output_handler: Callable[[pg.Surface], Wo
     # root.update()
     # os.environ["SDL_WINDOWID"] = str(sdl_frame.winfo_id())
     # wire_values = {}
+
+    connections = build_connections(circuit)
 
     pg.init()
     FLAGS = pg.RESIZABLE
@@ -276,7 +440,7 @@ def view_circuit(circuit, node, space, output_handler: Callable[[pg.Surface], Wo
         output_handler = output_handler(screen)
     font = pg.font.Font("turing_complete_interface/Px437_IBM_BIOS.ttf", FONT_SIZE)
     W, H = screen.get_size()
-    view = CircuitView.centered(screen, scale_x=40, circuit=circuit)
+    view = CircuitView.centered(screen, connections=connections, space=space, scale_x=40, circuit=circuit)
 
     cycle = None
     pg.key.set_repeat(100, 50)
@@ -287,12 +451,9 @@ def view_circuit(circuit, node, space, output_handler: Callable[[pg.Surface], Wo
         simulator = None
     show_circuit = True
 
-    connections = build_connections(circuit)
     clock = pg.time.Clock()
     running = True
     Event = pg.event.EventType
-    hover_text = {}
-    wire_values = {}
     while running:
         if simulator:
             simulator.update()
@@ -350,31 +511,8 @@ def view_circuit(circuit, node, space, output_handler: Callable[[pg.Surface], Wo
             else:
                 output_handler.draw(screen)
         else:
-            hover_text = {}
-            screen.fill((127, 127, 127))
-            for x in range(space.x, space.x + space.w):
-                for y in range(space.y, space.y + space.h):
-                    k = translate((x, y))
-                    if (k[0] + k[1]) % 2 == 1:
-                        view.draw.rect((65, 65, 65), (x - 0.5, y - 0.5, 1.1, 1.1))
-                    else:
-                        view.draw.rect((127, 127, 127), (x - 0.5, y - 0.5, 1.1, 1.1))
-            for wire in circuit.wires:
-                view.draw_wire(wire)
-            for gate in circuit.gates:
-                shape, _ = get_component(gate.name, gate.custom_data if gate.name != "Custom" else gate.custom_id, True)
-                view.draw_gate(gate, shape, hover_text, wire_values, (gate.id in cycle if cycle else False))
-            # shape = compute_gate_shape(circuit, "main")
-            # draw_gate(view, GateReference("main", (0,0), 0, "-1", ""), shape)
-            p = view.s2w(pg.mouse.get_pos())
-            p = int(round(p[0])), int(round(p[1]))
-            if p in connections:
-                for q in connections[p]:
-                    view.draw.circle((255, 255, 0), q, 0.75)
-
-            view.draw.text((0, 0, 0), p, str(p), anchor="bottomleft", background=(127, 127, 127))
-            if t := hover_text.get(p, None):
-                view.draw.text((0, 0, 0), p, t, anchor="topleft", background=(127, 127, 127))
+            view.screen.fill((127, 127, 127))
+            view.draw_circuit()
         pg.display.update()
         pg.display.set_caption(f"FPS: {clock.get_fps():.2f}")
 

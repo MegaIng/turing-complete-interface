@@ -25,6 +25,7 @@ class EntryConnector:
     combiner_wire_ends: tuple[tuple[Pos, ...], ...]
     creator_wires: tuple[tuple[Pos, ...], ...]
 
+    group_in_rel: Pos
     out_rel: Pos
 
     pair: tuple[EntryConnector, EntryConnector] = None
@@ -41,6 +42,19 @@ def straight_y_diag(start: Pos, end: Pos) -> Iterable[Pos]:
         yield from straight_y_diag((start[0], start[1] - 1), end)
     else:
         yield from straight_y_diag((start[0], start[1] + 1), end)
+
+
+def straight_x_diag(start: Pos, end: Pos) -> Iterable[Pos]:
+    yield start
+    if start == end:
+        return
+    assert abs(start[1] - end[1]) < 2, (start, end)
+    if abs(start[0] - end[0]) < 2:
+        yield end
+    elif start[0] > end[0]:
+        yield from straight_x_diag((start[0] - 1, start[1]), end)
+    else:
+        yield from straight_x_diag((start[0] + 1, start[1]), end)
 
 
 def straight(start: Pos, end: Pos) -> Iterable[Pos]:
@@ -76,30 +90,32 @@ class TruthTableGenerator:
         self.next_x += self.delta_x
         self.gates.append(in_c := GateReference(
             "Custom", (top_left[0] + self.connector.combiner_rel[0], top_left[1] + self.connector.combiner_rel[1]),
-            0, str(self._next_id()), str(self.connector.combiner_custom_id), self.connector.combiner_custom_id))
+            0, self._next_id(), str(self.connector.combiner_custom_id), self.connector.combiner_custom_id))
         self.gates.append(out_c := GateReference(
             "Custom", (top_left[0] + self.connector.creator_rel[0], top_left[1] + self.connector.creator_rel[1]),
-            0, str(self._next_id()), str(self.connector.creator_custom_id), self.connector.creator_custom_id))
+            0, self._next_id(), str(self.connector.creator_custom_id), self.connector.creator_custom_id))
         wire_x = top_left[0] + 1
         for i, (name, value) in enumerate(zip(self.input_names, inputs)):
             if value is None:
                 continue
             old_wire = self.input_lines[name, value]
             target = self.connector.combiner_wire_ends[i]
-            self.wires.append(CircuitWire(self._next_id(), False, old_wire[0], "",
+            self.wires.append(CircuitWire(self._next_id(), "ck_bit", old_wire[0], "",
                                           list(straight(old_wire[1:],
                                                         p := (wire_x, old_wire[2])))))
             self.input_lines[name, value] = old_wire[0], *p
-            self.wires.append(CircuitWire(self._next_id(), False, 0, "", [
+            self.wires.append(CircuitWire(self._next_id(), "ck_bit", 0, "", [
                 p, *straight_y_diag((p[0] - 1, p[1] + 1), (target[0][0] + top_left[0], target[0][1] + top_left[1])),
                 *((p[0] + top_left[0], p[1] + top_left[1]) for p in target[1:])
             ]))
         for wire, value in zip(self.connector.creator_wires, outputs):
             if value:
-                self.wires.append(CircuitWire(self._next_id(), False, 0, "",
+                self.wires.append(CircuitWire(self._next_id(), "ck_bit", 0, "",
                                               [(p[0] + top_left[0], p[1] + top_left[1]) for p in wire]))
+
+        in_group = top_left[0] + self.connector.group_in_rel[0], top_left[1] + self.connector.group_in_rel[1]
+        self.wires.append(CircuitWire(self._next_id(), "ck_byte", 0, "", list(straight_x_diag(self.output_pos, in_group))))
         out = top_left[0] + self.connector.out_rel[0], top_left[1] + self.connector.out_rel[1]
-        self.wires.append(CircuitWire(self._next_id(), True, 0, "", list(straight(self.output_pos, out))))
         self.output_pos = out
 
     @staticmethod
@@ -137,14 +153,14 @@ class TruthTableGenerator:
     def wrap_around(self):
         x = self.next_x
         for key, (c, wx, wy) in self.input_lines.items():
-            self.wires.append(CircuitWire(self._next_id(), False, c, "", list(straight((wx, wy), (x, wy)))))
+            self.wires.append(CircuitWire(self._next_id(), "ck_bit", c, "", list(straight((wx, wy), (x, wy)))))
             self.wires.append(
-                CircuitWire(self._next_id(), False, c, "", list(straight((x, wy), (x, wy + self.delta_y)))))
+                CircuitWire(self._next_id(), "ck_bit", c, "", list(straight((x, wy), (x, wy + self.delta_y)))))
             self.input_lines[key] = (c, x, wy + self.delta_y)
             x += 1 if self.delta_x > 0 else -1
-        self.wires.append(CircuitWire(self._next_id(), False, 0, "",
+        self.wires.append(CircuitWire(self._next_id(), "ck_bit", 0, "",
                                       list(straight(self.output_pos, (x, self.output_pos[1])))))
-        self.wires.append(CircuitWire(self._next_id(), False, 0, "",
+        self.wires.append(CircuitWire(self._next_id(), "ck_bit", 0, "",
                                       list(straight((x, self.output_pos[1]), (x, self.output_pos[1] + self.delta_y)))))
         self.output_pos = (x, self.output_pos[1] + self.delta_y)
 
@@ -157,7 +173,8 @@ class TruthTableGenerator:
         total = len(tt.cares)
         vs = list(tt.cares.items())
         vs.sort(key=lambda t: t[1])
-        for i, ((inp, out), (next_inp, next_out)) in enumerate(zip(vs, vs[1:])):
+        # for i, ((inp, out), (next_inp, next_out)) in enumerate(zip(vs, vs[1:])):
+        for i, (inp, out) in enumerate(vs):
             self.generate_entry(inp, out)
             if self.delta_x > 0:
                 if self.next_x >= self.x_range.stop:
@@ -295,9 +312,10 @@ class Concatenate(PinSelector):
 
 @dataclass
 class Pattern:
-    components: list[ComponentTemplate]
-    wires: list[WireTemplate]
-    pins: dict[str, list[Pos]]
+    components: list[ComponentTemplate] = field(default_factory=list)
+    wires: list[WireTemplate] = field(default_factory=list)
+    pins: dict[str, list[Pos]] = field(default_factory=dict)
+    conditional_wires: dict[str, list[WireTemplate]] = field(default_factory=dict)
 
     @property
     def width(self):
@@ -383,7 +401,7 @@ class CompactTruthTableGenerator:
             for a, b in zip_longest(values, values):
                 if b is None:
                     if current_y + self.single_entry_pattern.height > layout.area[1] + layout.area[3]:
-                        current_x += self.single_entry_pattern.width +1
+                        current_x += self.single_entry_pattern.width + 1
                         current_y = layout.area[1]
                     pins = self.single_entry_pattern.build((current_x, current_y), circuit)
                     assign_inputs(reversed(a), pins["ins"])
@@ -414,8 +432,33 @@ class CompactTruthTableGenerator:
                     circuit.add_wire([prev, pins["prev"][0]], "ck_byte")
                 prev = pins["next"][0]
                 current_y += self.decoding_pattern.height
-        pins = self.output_pattern.build((layout.area[0]+layout.area[2] - self.output_pattern.width, layout.area[1]), circuit)
+        pins = self.output_pattern.build((layout.area[0] + layout.area[2] - self.output_pattern.width, layout.area[1]),
+                                         circuit)
         if prev is not None:
             circuit.add_wire([prev, pins["prev"][0]], "ck_byte")
 
         return circuit
+
+
+@dataclass
+class HumanTruthTableGenerator:
+    """
+    input_pattern: Input value (including pin) n 1bit output pins addressed pos[0:n],
+                                               n 1bit output pins addressed neg[0:n]
+    single_entry_pattern: n 1 bit pins addressed ins[0:n], result 1 1bit pin address out[0]
+    double_entry_pattern: Two sets of n 1 bit pins, addressed a[0:n] and b[0:n], result 1 1bit address out[0]
+    decoding_pattern: m bit input pins addressed values[0:k], ordered in increasing bit value
+                    k ? bit input pins addressed prev[0:k], k ? bit output pins addressed 'next[0:k]'
+    output_pattern: k ? bit input pins addressed prev[0:k], should include output pin or whatever is needed
+    """
+    input_template: Pattern
+    single_entry: Pattern
+    double_entry: Pattern
+
+    def generate(self, truth: TruthTable, circuit=None, layout=None):
+        if layout is None:
+            layout = get_layout("architecture")
+        if circuit is None:
+            circuit = Circuit([], [], 0)
+        left, top, width, height = layout.area
+        pins = self.input_template.build((left, top), circuit)

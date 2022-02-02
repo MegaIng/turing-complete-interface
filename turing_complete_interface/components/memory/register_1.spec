@@ -3,7 +3,7 @@ name: REGISTER_1
 inputs: ?save, ?in
 outputs: out
 
-components: and_a: AND_2W1, and_b: AND_2W1, not: NOT_1W1, latch: SR_LATCH
+components: and_a: AND_2W1, and_b: AND_2W1, not: NOT_1W1, latch: SR_LATCH_DELAYED
 
 wires: {
     save -> and_a.a,
