@@ -121,7 +121,7 @@ def show_circuit(circuit: Circuit, no_simulation=False):
                  get_layout(selected_level).new_space())
 
 
-def lut_from_ints(raw: Iterable[int], in_bits: int, out_bits: int):
+def lut_from_bytes(raw: Iterable[int], in_bits: int, out_bits: int):
     lut = LUT((LUTVariable("address", in_bits),), (LUTVariable("out", out_bits),))
     for i, v in enumerate(raw):
         if i > 2 ** in_bits:

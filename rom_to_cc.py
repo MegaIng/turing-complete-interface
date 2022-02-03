@@ -36,7 +36,7 @@ def apply_lfsr(lfsr_size: int, data: list[int]) -> list[int]:
             del positions[i:]
             break
     mask = 2 ** lfsr_size - 1
-    data3 = [None] * len(data)
+    data3: list[int | None] = [None] * len(data)
     for i, d in enumerate(data):
         if d is None:
             continue
@@ -46,7 +46,7 @@ def apply_lfsr(lfsr_size: int, data: list[int]) -> list[int]:
     return data3
 
 
-def decoding_template(out_bits: int) -> tuple[str, tuple[str]]:
+def decoding_template(out_bits: int) -> tuple[str, list[str]]:
     if out_bits <= 16:
         return "LUTs/Templates/Expand16", ["Expand16D"]
     elif out_bits <= 32:
@@ -76,7 +76,7 @@ def input_template(in_bits: int, inverted_inputs: bool) -> tuple[str, str, str]:
     elif in_bits <= 8:
         return "LUTs/Templates/Input8", "ByteSplitter", "Not"
     elif in_bits <= 32:
-        return "LUTs/Templates/Input32" "ByteSplitter", "ByteSplitter"
+        return "LUTs/Templates/Input32", "ByteSplitter", "ByteSplitter"
     else:
         raise f"Too many inputs: {in_bits}, no template available"
 
@@ -118,7 +118,7 @@ def ttgen(in_bits, inverted_inputs, out_bits) -> CompactTruthTableGenerator:
         output_pattern)
 
 
-def rom_to_cc(data: str,
+def rom_to_cc(data: list[int],
               in_bits: int,
               inverted_inputs: bool,
               lfsr_size: int,
@@ -145,7 +145,7 @@ def rom_to_cc(data: str,
     print(f"Wrote to {output_file_name}")
 
 
-if __name__ == "__main__":
+def main():
     parser = argparse.ArgumentParser(description="""
                                      example: %(prog)s microcode.bin 4 9 19 SAP-Microcode
 
@@ -200,3 +200,7 @@ if __name__ == "__main__":
         options.lfsr_size,
         options.out_file,
         options.out_bits)
+
+
+if __name__ == '__main__':
+    main()
