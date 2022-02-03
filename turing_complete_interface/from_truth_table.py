@@ -114,7 +114,8 @@ class TruthTableGenerator:
                                               [(p[0] + top_left[0], p[1] + top_left[1]) for p in wire]))
 
         in_group = top_left[0] + self.connector.group_in_rel[0], top_left[1] + self.connector.group_in_rel[1]
-        self.wires.append(CircuitWire(self._next_id(), "ck_byte", 0, "", list(straight_x_diag(self.output_pos, in_group))))
+        self.wires.append(
+            CircuitWire(self._next_id(), "ck_byte", 0, "", list(straight_x_diag(self.output_pos, in_group))))
         out = top_left[0] + self.connector.out_rel[0], top_left[1] + self.connector.out_rel[1]
         self.output_pos = out
 
@@ -316,6 +317,7 @@ class Pattern:
     wires: list[WireTemplate] = field(default_factory=list)
     pins: dict[str, list[Pos]] = field(default_factory=dict)
     conditional_wires: dict[str, list[WireTemplate]] = field(default_factory=dict)
+    score: tuple[int, int] = None
 
     @property
     def width(self):
@@ -326,6 +328,7 @@ class Pattern:
         return max(c.bottom for c in self.components)
 
     def build(self, base: tuple[int, int], circuit: Circuit):
+        circuit.nand += self.score[0]
         for c in self.components:
             circuit.add_component(c.kind, (base[0] + c.rel_pos[0], base[1] + c.rel_pos[1]), **c.extra_data)
         for w in self.wires:
@@ -356,7 +359,7 @@ class Pattern:
                         for t in s.find_pins(circuit)]
             if not out[cat]:
                 print("For category", cat, "no values were produced by", s, "in circuit", circuit)
-        return cls(gates, wires, out)
+        return cls(gates, wires, out, score=(circuit.nand, circuit.delay))
 
 
 @dataclass
@@ -388,6 +391,9 @@ class CompactTruthTableGenerator:
             layout = get_layout("component_factory")
         if circuit is None:
             circuit = Circuit([], [], random.randrange(0, 2 ** 32), nesting_level=2, description="Generate LUT")
+            circuit.nand = 0
+            circuit.delay = 4  # We assume
+            circuit.store_score = True
         left, top, width, height = layout.area
         start_inner = layout.area[1] + self.input_pattern.width
         pins = self.input_pattern.build((left, top), circuit)
