@@ -123,17 +123,22 @@ def rom_to_cc(data: list[int],
               inverted_inputs: bool,
               lfsr_size: int,
               output_file_name: str,
-              out_bits: int):
-    select_level("component_factory")
+              out_bits: int,
+              layout: LevelLayout = None,
+              print_lut: bool = False):
+    # Reorder data for LFSR counter
     if lfsr_size > 0:
         data = apply_lfsr(lfsr_size, data)
+    # Create the LUT
     lut = lut_from_bytes(data, in_bits, out_bits)
     lut.truth.prune_zeros()
     lut.truth.reduce_dupes()
-    print(lut)
+    if print_lut:
+        print(lut)
 
+    select_level("component_factory")
     gen = ttgen(in_bits, inverted_inputs, out_bits)
-    circuit = gen.generate(lut.truth)
+    circuit = gen.generate(lut.truth, layout=layout)
 
     try:
         old = load_circuit(output_file_name)
@@ -141,8 +146,9 @@ def rom_to_cc(data: list[int],
         circuit.save_version = old.save_version
     except FileNotFoundError:
         pass
+    circuit.delay = 2 if inverted_inputs else 4
     save_custom_component(circuit, output_file_name)
-    print(f"Wrote to {output_file_name}")
+    print(f"Wrote to {output_file_name}, LUT cost is {circuit.nand}/{circuit.delay}")
 
 
 def main():
@@ -199,7 +205,8 @@ def main():
         options.inverted_inputs,
         options.lfsr_size,
         options.out_file,
-        options.out_bits)
+        options.out_bits,
+        options.verbose > 0)
 
 
 if __name__ == '__main__':
