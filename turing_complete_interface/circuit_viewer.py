@@ -144,8 +144,12 @@ class CircuitView(WorldView):
 
     def draw_wire(self, wire):
         color = wire.screen_color
-        if len(wire.positions) > 1:
+        if len(wire.positions) > 2:
             self.draw.lines(color, False, wire.positions, 0.5)
+        if len(wire.positions) == 2:
+            s, e = wire.positions
+            if max(abs(s[0] - e[0]), abs(s[1] - e[1])) <= 1:
+                self.draw.lines(color, False, wire.positions, 0.5)
         self.draw.circle(color, wire.positions[0], 0.5)
         self.draw.circle(color, wire.positions[-1], 0.5)
         if wire.label and len(wire.positions) > 1:
@@ -214,7 +218,8 @@ def load_circuit(ns) -> tuple[Circuit, LogicNodeType, Space]:
             assembled = assemble(save_name, assembly_path)
             tc_components.program.clear()
             tc_components.program.frombytes(assembled)
-        node = build_gate(save_name, circuit)
+        # node = build_gate(save_name, circuit)
+        node = None
     return circuit, node, space
 
 
@@ -429,7 +434,7 @@ def view_circuit(circuit, node, space, output_handler: Callable[[pg.Surface], Wo
     # os.environ["SDL_WINDOWID"] = str(sdl_frame.winfo_id())
     # wire_values = {}
 
-    connections = build_connections(circuit)
+    connections = circuit.connections
 
     pg.init()
     FLAGS = pg.RESIZABLE
@@ -440,7 +445,7 @@ def view_circuit(circuit, node, space, output_handler: Callable[[pg.Surface], Wo
         output_handler = output_handler(screen)
     font = pg.font.Font("turing_complete_interface/Px437_IBM_BIOS.ttf", FONT_SIZE)
     W, H = screen.get_size()
-    view = CircuitView.centered(screen, connections=connections, space=space, scale_x=40, circuit=circuit)
+    view = CircuitView.centered(screen, space=space, scale_x=40, circuit=circuit)
 
     cycle = None
     pg.key.set_repeat(100, 50)

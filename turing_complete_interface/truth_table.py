@@ -280,6 +280,10 @@ class TruthTable:
                     out[j] = True
         return tuple(out)
 
+    def get_via_int(self, i: int) -> int:
+        k = tuple(int2ba(i, len(self.in_vars), "little"))
+        return ba2int(bitarray(self.get_ord(k), endian="little"))
+
 
 @dataclass
 class LUTVariable:

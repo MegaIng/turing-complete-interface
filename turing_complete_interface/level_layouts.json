@@ -26,7 +26,13 @@
     ]
   },
   "component_factory": {
-    "inputs": null
+    "inputs": null,
+    "size": [
+      -125,
+      -125,
+      250,
+      250
+    ]
   },
   "byte_less_i": {
     "IO": [
@@ -55,10 +61,10 @@
   },
   "multiply": {
     "size": [
-      -29,
-      -29,
-      59,
-      59
+      -40,
+      -40,
+      80,
+      80
     ]
   }
 }

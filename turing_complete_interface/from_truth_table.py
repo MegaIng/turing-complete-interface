@@ -401,13 +401,15 @@ class CompactTruthTableGenerator:
         neg = pins["neg"]
         current_x = start_inner
         current_y = layout.area[1]
+        x_step = max(self.single_entry_pattern.width, self.double_entry_pattern.width,
+                     self.decoding_pattern.width)
         prev = None
         for result, values in truth.result_groups():
             last_out = None
             for a, b in zip_longest(values, values):
                 if b is None:
                     if current_y + self.single_entry_pattern.height > layout.area[1] + layout.area[3]:
-                        current_x += self.single_entry_pattern.width + 1
+                        current_x += x_step + 1
                         current_y = layout.area[1]
                     pins = self.single_entry_pattern.build((current_x, current_y), circuit)
                     assign_inputs(reversed(a), pins["ins"])
@@ -417,7 +419,7 @@ class CompactTruthTableGenerator:
                     last_out = pins["out"][0]
                 else:
                     if current_y + self.double_entry_pattern.height > layout.area[1] + layout.area[3]:
-                        current_x += self.double_entry_pattern.width
+                        current_x += x_step
                         current_y = layout.area[1]
                     pins = self.double_entry_pattern.build((current_x, current_y), circuit)
                     assign_inputs(reversed(a), pins["a"])
@@ -428,7 +430,7 @@ class CompactTruthTableGenerator:
                     last_out = pins["out"][0]
             if last_out is not None:
                 if current_y + self.decoding_pattern.height > layout.area[1] + layout.area[3]:
-                    current_x += self.decoding_pattern.width
+                    current_x += x_step
                     current_y = layout.area[1]
                 pins = self.decoding_pattern.build((current_x, current_y), circuit)
                 for p, v in zip(pins["values"], reversed(result)):
@@ -438,7 +440,7 @@ class CompactTruthTableGenerator:
                     circuit.add_wire([prev, pins["prev"][0]], "ck_byte")
                 prev = pins["next"][0]
                 current_y += self.decoding_pattern.height
-        pins = self.output_pattern.build((layout.area[0] + layout.area[2] - self.output_pattern.width, layout.area[1]),
+        pins = self.output_pattern.build((current_x + x_step, layout.area[1]),
                                          circuit)
         if prev is not None:
             circuit.add_wire([prev, pins["prev"][0]], "ck_byte")

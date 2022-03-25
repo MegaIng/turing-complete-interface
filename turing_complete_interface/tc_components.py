@@ -251,7 +251,7 @@ def load_components():
                 name,
                 color,
                 {
-                    pn: CircuitPin(pd["pos"], pd["type"] == "input", pd["size"] == "byte", pd.get("is_delayed", False), pn)
+                    str(pn): CircuitPin(pd["pos"], pd["type"] == "input", pd["size"] == "byte", pd.get("is_delayed", False), pn)
                     for pn, pd in d["pins"].items()
                 },
                 d["blocks"],
@@ -313,7 +313,7 @@ def compute_gate_shape(circuit, name: str) -> GateShape:
                     cc_pin_name = gate.custom_data.partition(':')[-1]
                 else:
                     cc_pin_name = out_pin
-                pins[out_pin] = CircuitPin(p, not pin.is_input, pin.is_byte, name=cc_pin_name)
+                pins[str(out_pin)] = CircuitPin(p, not pin.is_input, pin.is_byte, name=cc_pin_name)
     circuit.shape = GateShape(name, CUSTOM, pins, list(blocks), text=lambda _: name)
     return circuit.shape
 

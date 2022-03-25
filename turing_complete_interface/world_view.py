@@ -42,6 +42,7 @@ class WorldView:
     _grabbed: tuple[float, float] | None = None
     _grabbed_button: int | None = None
     draw: BoundDrawer = field(init=False, repr=False)
+    save_area: int = 50
 
     def __post_init__(self):
         self.draw = BoundDrawer(self)
@@ -50,12 +51,28 @@ class WorldView:
         x, y = _get_point(point)
         return (x + self.offset_x) * self.scale_x, (y + self.offset_y) * self.scale_y
 
+    def w2s_check(self, point: POINT_COMPATIBLE) -> tuple[tuple[float, float], bool]:
+        x, y = _get_point(point)
+        px, py = (x + self.offset_x) * self.scale_x, (y + self.offset_y) * self.scale_y
+        return (px, py), (-self.save_area <= px <= self.screen.get_width() + self.save_area and
+                          -self.save_area <= py <= self.screen.get_height() + self.save_area)
+
     def s2w(self, point: POINT_COMPATIBLE) -> tuple[float, float]:
         x, y = _get_point(point)
         return (x / self.scale_x - self.offset_x), (y / self.scale_y - self.offset_y)
 
     def mw2s(self, points: list[POINT_COMPATIBLE]) -> list[tuple[float, float]]:
         return [self.w2s(p) for p in points]
+
+    def mw2s_check(self, points: list[POINT_COMPATIBLE]) -> tuple[list[tuple[float, float]], bool]:
+        out = []
+        in_bounds = False
+        for p in points:
+            sp, c = self.w2s_check(p)
+            if c:
+                in_bounds = True
+            out.append(sp)
+        return out, in_bounds
 
     def ms2w(self, points: list[POINT_COMPATIBLE]) -> list[tuple[float, float]]:
         return [self.s2w(p) for p in points]
@@ -101,6 +118,11 @@ class WorldView:
         tl, br = self.w2s(tl), self.w2s(br)
         return tl, (br[0] - tl[0], br[1] - tl[1])
 
+    def rw2s_check(self, rect_like: RECT_COMPATIBLE) -> tuple[tuple[tuple[float, float], tuple[float, float]], bool]:
+        tl, br = _get_rect_corners(rect_like)
+        (tl, a), (br, b) = self.w2s_check(tl), self.w2s_check(br)
+        return (tl, (br[0] - tl[0], br[1] - tl[1])), (a or b)
+
     def sw2s(self, size: float) -> float:
         return size * (self.scale_y + self.scale_x) / 2
 
@@ -116,18 +138,26 @@ def _forward_to_pygame_draw(*, points: tuple[str | int, ...] = (), lists: tuple[
         @wraps(func)
         def wrap(self: BoundDrawer, *args, **kwargs):
             args = list(args)
+            do_draw = True
             for f, t in (
-                    (self.viewer.w2s, points),
-                    (self.viewer.mw2s, lists),
-                    (self.viewer.rw2s, rects),
-                    (lambda s: max(int(round(self.viewer.sw2s(s))), 1), sizes)
+                    (self.viewer.w2s_check, points),
+                    (self.viewer.mw2s_check, lists),
+                    (self.viewer.rw2s_check, rects),
+                    (lambda s: (max(int(round(self.viewer.sw2s(s))), 1), True), sizes)
             ):
                 for a in t:
+                    m = True
                     if isinstance(a, int) and len(args) > a:
-                        args[a] = f(args[a])
+                        args[a], m = f(args[a])
                     elif a in kwargs:
-                        kwargs[a] = f(kwargs[a])
-            return draw_func(self.viewer.screen, *args, **kwargs)
+                        kwargs[a], m = f(kwargs[a])
+                    if not m:
+                        do_draw = False
+                        break
+            if do_draw:
+                return draw_func(self.viewer.screen, *args, **kwargs)
+            else:
+                return None
 
         return wrap
 

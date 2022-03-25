@@ -103,8 +103,8 @@ def ttgen(in_bits, inverted_inputs, out_bits) -> CompactTruthTableGenerator:
                                filter=lambda _, pin: isinstance(pin.name, int) or pin.name.isdigit()), "xy")
             for gate in decoding_gates
         ]),
-        "prev": FromGates(CustomByName("Or64"), inputs=True, filter=lambda _, pin: pin.name == "A"),
-        "next": FromGates(CustomByName("Or64"), outputs=True)
+        "prev": FromGates(GatesByKind("QwordOr"), inputs=True, filter=lambda _, pin: pin.name == "a"),
+        "next": FromGates(GatesByKind("QwordOr"), outputs=True)
     })
     output_circuit, output_kind = output_template(out_bits)
     output_pattern = Pattern.from_circuit(load_circuit(output_circuit), {

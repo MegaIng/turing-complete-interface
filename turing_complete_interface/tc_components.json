@@ -1645,6 +1645,48 @@
       },
       "type": "build"
     },
+    "QwordOr": {
+      "blocks": [
+        [
+          0,
+          0
+        ],
+        [
+          0,
+          -1
+        ]
+      ],
+      "func": "build_or",
+      "pins": {
+        "a": {
+          "is_delayed": false,
+          "pos": [
+            -1,
+            -1
+          ],
+          "size": "qword",
+          "type": "input"
+        },
+        "b": {
+          "is_delayed": false,
+          "pos": [
+            -1,
+            0
+          ],
+          "size": "qword",
+          "type": "input"
+        },
+        "out": {
+          "pos": [
+            1,
+            0
+          ],
+          "size": "qword",
+          "type": "output"
+        }
+      },
+      "type": "build"
+    },
     "ByteSplitter": {
       "blocks": [
         [
@@ -1759,6 +1801,126 @@
       "type": "combined"
     },
     "QwordSplitter": {
+      "blocks": [
+        [
+          0,
+          -3
+        ],
+        [
+          0,
+          -2
+        ],
+        [
+          0,
+          -1
+        ],
+        [
+          0,
+          0
+        ],
+        [
+          0,
+          1
+        ],
+        [
+          0,
+          2
+        ],
+        [
+          0,
+          3
+        ],
+        [
+          0,
+          4
+        ]
+      ],
+      "pins": {
+        "out": {
+          "pos": [
+            1,
+            0
+          ],
+          "size": "qword",
+          "type": "output"
+        },
+        "r0": {
+          "is_delayed": false,
+          "pos": [
+            -1,
+            -3
+          ],
+          "size": "byte",
+          "type": "input"
+        },
+        "r1": {
+          "is_delayed": false,
+          "pos": [
+            -1,
+            -2
+          ],
+          "size": "byte",
+          "type": "input"
+        },
+        "r2": {
+          "is_delayed": false,
+          "pos": [
+            -1,
+            -1
+          ],
+          "size": "byte",
+          "type": "input"
+        },
+        "r3": {
+          "is_delayed": false,
+          "pos": [
+            -1,
+            0
+          ],
+          "size": "byte",
+          "type": "input"
+        },
+        "r4": {
+          "is_delayed": false,
+          "pos": [
+            -1,
+            1
+          ],
+          "size": "byte",
+          "type": "input"
+        },
+        "r5": {
+          "is_delayed": false,
+          "pos": [
+            -1,
+            2
+          ],
+          "size": "byte",
+          "type": "input"
+        },
+        "r6": {
+          "is_delayed": false,
+          "pos": [
+            -1,
+            3
+          ],
+          "size": "byte",
+          "type": "input"
+        },
+        "r7": {
+          "is_delayed": false,
+          "pos": [
+            -1,
+            4
+          ],
+          "size": "byte",
+          "type": "input"
+        }
+      },
+      "spec": "TC_QWORD_MAKER",
+      "type": "combined"
+    },
+    "QwordMaker": {
       "blocks": [
         [
           0,
