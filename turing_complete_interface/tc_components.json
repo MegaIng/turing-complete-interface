@@ -64,7 +64,7 @@
       "state_size": 0,
       "type": "virtual"
     },
-    "InputQword": {
+    "Input64": {
       "blocks": [
         [
           0,
@@ -328,7 +328,7 @@
       "state_size": 0,
       "type": "virtual"
     },
-    "Output1B": {
+    "Output8": {
       "blocks": [
         [
           0,

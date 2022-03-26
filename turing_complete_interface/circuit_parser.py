@@ -40,6 +40,7 @@ class GateReference:
     custom_data: str = ""
     custom_id: int = 0
     program_name: str = ""
+    real_offset: int = 0
 
     def translate(self, dp: tuple[int, int]):
         dp = self.rot(dp)
@@ -59,6 +60,7 @@ class GateReference:
                  kind: str,
                  position: NimPoint,
                  rotation: int,
+                 real_offset: int,
                  permanent_id: int,
                  custom_string: str,
                  custom_id: int,
@@ -67,7 +69,8 @@ class GateReference:
         if save_monger.is_virtual(kind):
             return None
         return GateReference(
-            kind, (position["x"], position["y"]), rotation, permanent_id, custom_string, custom_id, program_name,
+            kind, (position["x"], position["y"]), rotation, permanent_id, custom_string, custom_id,
+            program_name, real_offset
         )
 
     def to_nim(self):
@@ -98,21 +101,23 @@ class CircuitWire:
 
     @classmethod
     def from_nim(cls,
-                 permanent_id: int,
+                 # permanent_id: int,
                  path: list[NimPoint],
                  kind: str,
                  color: int,
                  comment: str) -> CircuitWire:
+        assert kind in ("wk_1", "wk_8", "wk_64"), kind
+        kind = {"wk_1": "ck_bit", "wk_8": "ck_byte", "wk_64": "ck_qword"}[kind]
         assert kind in ("ck_bit", "ck_byte", "ck_qword"), kind
         return CircuitWire(
-            permanent_id, kind, color, comment, [(p["x"], p["y"]) for p in path]
+            0, kind, color, comment, [(p["x"], p["y"]) for p in path]
         )
 
     def to_nim(self):
         return {
             "permanent_id": self.id,
             "path": [{"x": p[0], "y": p[1]} for p in self.positions],
-            "kind": self.kind,
+            "kind": {"ck_bit":"wk_1", "ck_byte":"wk_8", "ck_qword":"wk_64"}[self.kind],
             "color": self.color,
             "comment": self.label
         }
@@ -155,7 +160,7 @@ class Circuit:
     clock_speed: int = 100
     nesting_level: int = 1
     description: str = ""
-    unpacked: bool = False
+    centered: bool = False
     camera_position: tuple[int, int] = (0, 0)
 
     shape: GateShape | None = None
@@ -167,7 +172,7 @@ class Circuit:
         data = save_monger.parse_state(list(text))
         return Circuit(
             [GateReference.from_nim(**c) for c in data["components"]],
-            [CircuitWire.from_nim(**c) for c in data["circuits"]],
+            [CircuitWire.from_nim(**c) for c in data["wires"]],
             data["nand"],
             data["delay"],
             data["save_version"],
@@ -175,7 +180,7 @@ class Circuit:
             data["clock_speed"],
             data["nesting_level"],
             data["description"],
-            data["unpacked"],
+            data["centered"],
             data["camera_position"],
             shape=None,
             _raw_nim_data=data
@@ -194,7 +199,6 @@ class Circuit:
             self.clock_speed,
             self.nesting_level,
             self.description,
-            self.unpacked,
             self.camera_position,
         )
 

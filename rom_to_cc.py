@@ -61,9 +61,9 @@ def output_template(out_bits: int) -> tuple[str, str]:
     if out_bits <= 1:
         return "LUTs/Templates/Output1", "Output1"
     elif out_bits <= 8:
-        return "LUTs/Templates/Output8", "Output1B"
+        return "LUTs/Templates/Output8", "Output8"
     elif out_bits <= 64:
-        return "LUTs/Templates/Output64", "OutputQword"
+        return "LUTs/Templates/Output64", "Output64"
     else:
         raise f"Too many outputs: {out_bits}, no template available"
 
@@ -206,6 +206,7 @@ def main():
         options.lfsr_size,
         options.out_file,
         options.out_bits,
+        None,
         options.verbose > 0)
 
 
